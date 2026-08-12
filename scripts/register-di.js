@@ -36,14 +36,20 @@ NEEDS_MANUAL section for anything that requires a hand edit.`;
 const REAL_VALUE_ENV_FILES = ['.env', '.env.development'];
 const PLACEHOLDER_ENV_FILES = ['.env.example', '.env.staging', '.env.preprod', '.env.production'];
 
-const report = { planted: [], inserted: [], skippedExisting: [], envAppended: [], needsManual: [] };
+const report = { planted: [], inserted: [], skippedExisting: [], envAppended: [], patched: [], needsManual: [] };
+
+/** Every file actually modified — merged into the generate.js manifest so rollback.js can restore them. */
+const touchedFiles = new Set();
 
 function read(file) {
     return fs.readFileSync(file, 'utf8');
 }
 
 function write(file, content) {
+    const previous = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null;
+    if (previous === content) return; // no-op runs leave no trace
     fs.writeFileSync(file, content);
+    touchedFiles.add(file);
 }
 
 /** Insert `text` before the first line containing `anchor`. Returns null if missing. */
@@ -456,6 +462,14 @@ function main() {
     }
 
     const f = featureModel(spec);
+
+    // never register DI entries pointing at files that don't exist yet
+    const generatedServiceFile = path.join(repo, 'src', 'features', f.feature, 'data', 'services', `${f.serviceClass}.ts`);
+    if (!fs.existsSync(generatedServiceFile)) {
+        console.error(`register-di.js: ${path.relative(repo, generatedServiceFile)} not found — run generate.js first.`);
+        return 1;
+    }
+
     const envFields = collectEnvWiring(spec);
 
     updateTokens(repo, f);
@@ -463,6 +477,21 @@ function main() {
     updateI18n(repo, f);
     updateConfig(repo, f, envFields);
     updateEnvFiles(repo, f, envFields);
+
+    // record what we modified in the generation manifest — rollback.js restores
+    // `patched` files with `git checkout --`, and DI/i18n/config/env edits must
+    // be part of that map, not just generate.js's anchor patches
+    report.patched = [...touchedFiles].map((file) => path.relative(repo, file));
+    const manifestPath = path.join(repo, '.claude-skill-manifest.json');
+    if (report.patched.length && fs.existsSync(manifestPath)) {
+        try {
+            const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+            manifest.patched = [...new Set([...(manifest.patched ?? []), ...report.patched])];
+            fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
+        } catch {
+            report.needsManual.push('.claude-skill-manifest.json is unreadable — rollback will not cover the DI/i18n/config/env edits; restore them by hand if aborting');
+        }
+    }
 
     console.log(JSON.stringify(report, null, 2));
     return report.needsManual.length ? 2 : 0;

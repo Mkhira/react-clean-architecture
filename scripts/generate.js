@@ -1227,6 +1227,80 @@ function appendFeature(repo, spec, f, manifest) {
     }
 }
 
+// ------------------------------------------------------------ validation ----
+
+const SUPPORTED_METHODS = new Set(['GET', 'POST', 'PUT', 'DELETE']);
+
+/**
+ * Rejects specs that would generate broken TypeScript instead of failing later
+ * inside tsc. Returns a list of human-readable problems (empty = valid).
+ */
+function validateSpec(spec) {
+    const problems = [];
+    for (const required of ['feature', 'mode', 'endpoints']) {
+        if (!spec[required]) problems.push(`spec is missing "${required}".`);
+    }
+    if (problems.length) return problems;
+
+    if (!/^[A-Z][A-Za-z0-9]*$/.test(pascal(spec.feature))) {
+        problems.push(`feature "${spec.feature}" does not normalize to a PascalCase identifier — pick a name made of letters/digits.`);
+    }
+    if (!['create', 'append'].includes(spec.mode)) {
+        problems.push(`mode must be "create" or "append", got "${spec.mode}".`);
+    }
+
+    const seenActions = new Set();
+    for (const endpoint of spec.endpoints) {
+        const label = `endpoint "${endpoint.action ?? '?'}"`;
+        for (const required of ['action', 'method', 'path', 'hostType']) {
+            if (!endpoint[required]) problems.push(`${label} is missing "${required}".`);
+        }
+        if (!endpoint.action || !endpoint.method) continue;
+
+        const action = camel(endpoint.action);
+        if (seenActions.has(action)) {
+            problems.push(`duplicate action "${action}" — two endpoints would emit the same method/use case; suffix one (e.g. ${action}ById).`);
+        }
+        seenActions.add(action);
+
+        if (!SUPPORTED_METHODS.has(endpoint.method)) {
+            problems.push(`${label}: method "${endpoint.method}" is not supported (GET/POST/PUT/DELETE only).`);
+        }
+        if (endpoint.hostType === 'external' && !endpoint.baseUrl?.configField) {
+            problems.push(`${label}: external endpoints need baseUrl.configField.`);
+        }
+
+        // every {placeholder} in the path needs a pathParam, and vice versa —
+        // an orphan placeholder would ship a literal "{id}" in the request URL
+        const placeholders = [...String(endpoint.path ?? '').matchAll(/\{(\w+)\}/g)].map((m) => camel(m[1]));
+        const declared = (endpoint.pathParams ?? []).map((p) => camel(p.name));
+        for (const name of placeholders) {
+            if (!declared.includes(name)) problems.push(`${label}: path placeholder {${name}} has no matching pathParams entry.`);
+        }
+        for (const name of declared) {
+            if (!placeholders.includes(name)) problems.push(`${label}: pathParams entry "${name}" does not appear in the path as {${name}}.`);
+        }
+
+        // provenance must cover the request sample exactly, both directions —
+        // a mismatch generates a RequestDTO the mapper cannot satisfy (tsc error)
+        if (endpoint.requestSample && typeof endpoint.requestSample === 'object') {
+            const sampleKeys = Object.keys(endpoint.requestSample);
+            const provenanceKeys = Object.keys(endpoint.requestFieldSources ?? {});
+            for (const key of sampleKeys) {
+                if (!provenanceKeys.includes(key)) problems.push(`${label}: request field "${key}" has no requestFieldSources entry (ask the provenance question).`);
+            }
+            for (const key of provenanceKeys) {
+                if (!sampleKeys.includes(key)) problems.push(`${label}: requestFieldSources has "${key}" but the requestSample does not — remove it or add it to the sample.`);
+            }
+        }
+
+        if (endpoint.statusEnum && !(endpoint.statusEnum.values ?? []).length) {
+            problems.push(`${label}: statusEnum needs at least one value.`);
+        }
+    }
+    return problems;
+}
+
 // ------------------------------------------------------------------ main ----
 
 function main() {
@@ -1250,23 +1324,10 @@ function main() {
         console.error(`generate.js: cannot parse ${specPath}: ${error.message}`);
         return 1;
     }
-    for (const required of ['feature', 'mode', 'endpoints']) {
-        if (!spec[required]) {
-            console.error(`generate.js: spec is missing "${required}".`);
-            return 1;
-        }
-    }
-    for (const endpoint of spec.endpoints) {
-        for (const required of ['action', 'method', 'path', 'hostType']) {
-            if (!endpoint[required]) {
-                console.error(`generate.js: endpoint is missing "${required}": ${JSON.stringify(endpoint).slice(0, 120)}`);
-                return 1;
-            }
-        }
-        if (endpoint.hostType === 'external' && !endpoint.baseUrl?.configField) {
-            console.error(`generate.js: external endpoint "${endpoint.action}" needs baseUrl.configField.`);
-            return 1;
-        }
+    const problems = validateSpec(spec);
+    if (problems.length) {
+        for (const problem of problems) console.error(`generate.js: ${problem}`);
+        return 1;
     }
 
     const f = featureModel(spec);

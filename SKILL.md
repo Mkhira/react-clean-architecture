@@ -119,7 +119,11 @@ everything you hand-write. (`cleanString` stays mapper-local; that is the repo c
 1. Write `feature-spec.json` in a scratch dir (never the repo — audit.js persists a sanitized
    copy later). Schema + collision rules: [SPEC_FORMAT.md](SPEC_FORMAT.md). Before finalizing
    names, grep `tokens.ts`/`container.ts`: name taken → pick another verb (e.g.
-   `ValidateTaxStampUseCase` exists → `VerifyTaxStampUseCase`).
+   `ValidateTaxStampUseCase` exists → `VerifyTaxStampUseCase`). generate.js VALIDATES the spec
+   (PascalCase feature, no duplicate actions, GET/POST/PUT/DELETE only, path `{placeholders}`
+   ↔ pathParams matching both ways, provenance covering the request sample exactly, non-empty
+   statusEnum values) — on rejection, fix the spec per the stderr messages, don't work around
+   the script.
 2. `node <skill>/scripts/generate.js <spec>` — creates all files (never overwrites), prints a
    manifest; `needsManual` entries (append mode) are YOUR hand-edit list.
 3. Hand-write ONLY: the use-case `execute()` rules from the story, the mapper's
@@ -134,8 +138,10 @@ everything you hand-write. (`cleanString` stays mapper-local; that is the repo c
 5. `node <skill>/scripts/audit.js <spec> --persist-spec` — full checks + tsc baseline diff +
    the feature's jest suites. See [AUDIT.md](AUDIT.md) for every check and how to fix each.
 6. Failures → fix and re-audit, **max 3 fix-cycles**, then stop and report what still fails.
-   Rollback on abort: delete `created` files from `.claude-skill-manifest.json` and
-   `git checkout --` the `patched` ones — never touch anything outside the manifest.
+   Rollback on abort: `node <skill>/scripts/rollback.js` (dry run — shows the plan), then
+   `--apply` after the user confirms. It deletes the manifest's `created` files and
+   `git checkout --`s the `patched` ones (generate + register-di edits both) — nothing outside
+   the manifest is ever touched.
 
 ## Step 6 — Final report
 
@@ -156,4 +162,4 @@ full prior context (host types, provenance, enums) without re-asking.
 | Append turns same-host feature into mixed-host | Scripts detect + report — YOU patch the service ctor, its imports, and the DI registration args |
 | New endpoint uses device provenance, repo lacks `getDeviceMetadata()` | Reported → add the private helper by hand |
 | Anchor hand-deleted / same action twice | Reported → careful manual edit / skip or suffix |
-| Translations | Scripts merge new keys into the existing JSON (existing keys win) |
+| Translations | Append generates NO new keys (they are feature-level) — hand-add any new screen strings to the existing `en.json`/`ar.json`, never removing existing keys |

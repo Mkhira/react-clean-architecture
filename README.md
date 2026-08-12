@@ -32,8 +32,11 @@ never enters the context window, only compact script output does.
 | `scripts/generate.js` | spec → every feature file (never overwrites; append via anchors) |
 | `scripts/register-di.js` | DI + i18n + config + env wiring, idempotent |
 | `scripts/audit.js` | tsc baseline diff · jest · structure/DI/env/secret checks |
+| `scripts/rollback.js` | manifest-scoped undo: dry-run plan, `--apply` deletes created files + git-restores patched ones |
 
-All scripts run on plain Node (stdlib only) and support `--help`.
+All scripts run on plain Node (stdlib only) and support `--help`. generate.js validates the
+spec up front (duplicate actions, unsupported methods, orphan path placeholders, incomplete
+request-field provenance, …) so a bad spec is refused instead of becoming broken TypeScript.
 
 ## Install
 
@@ -62,7 +65,7 @@ anchors + the persisted sanitized `feature-spec.json` give it full prior context
 
 ## Testing the skill itself
 
-The skill ships with its own suite (48 tests) built on Node's built-in runner — still zero
+The skill ships with its own suite (72 tests) built on Node's built-in runner — still zero
 dependencies:
 
 ```bash
@@ -106,6 +109,16 @@ emitted — the HttpClient auth layer owns them.
 - Navigation wiring (expo-router route files are added by hand)
 
 ## Version
+
+**1.1.0**
+- `rollback.js`: deterministic manifest-scoped undo (register-di edits now recorded in the
+  manifest so DI/i18n/config/env patches are restorable too)
+- spec validation in generate.js: duplicate actions, unsupported methods, orphan `{placeholders}`,
+  provenance/sample mismatches, empty statusEnum — refused with clear messages
+- persisted specs stamped with `skillVersion` for future template migrations
+- json-to-dto: `[null, {…}]` arrays infer from the first non-null item
+- audit tolerates a corrupt tsc baseline file
+- test suite grown to 72 (aggressive/hostile-input scenarios, rollback, mis-ordered runs)
 
 **1.0.0** — initial release: create + append modes, app/external/mixed transports, curl parsing,
 DTO inference, DI/i18n/config/env wiring, audit with tsc-baseline diff + jest, 4 eval scenarios.

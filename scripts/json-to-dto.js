@@ -88,7 +88,9 @@ function generateTypes(sample, typeName, overrides = {}) {
 
     /** Merge element shapes across items so optional fields are caught. */
     function inferArrayElement(items, path, keyForNaming) {
-        const first = items[0];
+        // the first NON-null item decides the element kind — [null, {…}] must
+        // not degrade the whole array to unknown[]
+        const first = items.find((item) => item !== null && item !== undefined) ?? items[0];
         if (first !== null && typeof first === 'object' && !Array.isArray(first)) {
             const merged = {};
             const seenIn = {};

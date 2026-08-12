@@ -260,7 +260,11 @@ function checkTscDiff(repo) {
     const baselinePath = path.join(repo, BASELINE_FILE);
     let baseline = [];
     if (fs.existsSync(baselinePath)) {
-        baseline = JSON.parse(fs.readFileSync(baselinePath, 'utf8')).errors ?? [];
+        try {
+            baseline = JSON.parse(fs.readFileSync(baselinePath, 'utf8')).errors ?? [];
+        } catch {
+            warn('tsc-baseline', `${BASELINE_FILE} is unreadable — treating ALL current errors as new (re-run \`audit.js --baseline\`)`);
+        }
     } else {
         warn('tsc-baseline', `${BASELINE_FILE} not found — treating ALL current errors as new (run \`audit.js --baseline\` before generating next time)`);
     }
@@ -282,8 +286,12 @@ function checkJest(repo, f) {
 
 // -------------------------------------------------------------- persist ----
 
+const SKILL_VERSION = '1.1.0';
+
 function sanitizedSpec(spec) {
     const clone = JSON.parse(JSON.stringify(spec));
+    // stamped so future template versions can detect what generated a feature
+    clone.skillVersion = SKILL_VERSION;
     for (const endpoint of clone.endpoints) {
         if (endpoint.baseUrl?.envKey && endpoint.baseUrl.devValue) {
             endpoint.baseUrl.devValue = `<env:${endpoint.baseUrl.envKey}>`;
