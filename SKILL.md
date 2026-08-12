@@ -70,10 +70,20 @@ Ask: single or multiple endpoints? Then per endpoint: **"Do you have a curl comm
      no new env keys, omit `baseUrl.envKey`/`devValue`.
    - Anything else → `hostType: "external"` with a new `EXPO_PUBLIC_<FEATURE>_BASE_URL`.
 3. Numeric/UUID path segments → propose them as path params, user confirms which are dynamic.
-4. Then ask only: **response body** → **user story**. BOTH are real questions to the user —
-   never skip them, never invent a story, and NEVER execute the pasted curl yourself to
-   capture the response (it may carry a live auth token). If running the request would help,
-   ask permission first and only for read-only GETs against a test host.
+4. Then TWO real questions to the user, in order — never answer them yourself:
+   - **Response body** — offer three numbered options:
+     1. paste a sample JSON response;
+     2. **let the skill EXECUTE the curl and capture the live response** (preferred when the
+        paste is complete — the real payload beats a hand-typed sample). GETs run after a
+        one-line confirmation; for POST/PUT/DELETE warn that the call will hit the real API
+        and possibly mutate state, and get an explicit yes first. Model the `data` object
+        when the response arrives in the app's `ApiResponse` `{header, data}` envelope.
+        Any token in the paste is used for the call ONLY — it never lands in a file
+        (secret-hygiene enforces this);
+     3. "none" — endpoint returns nothing useful → `Result<void, …>`.
+   - **User story** — ask for it with an explicit **"skip"** option. Skipped → pass-through
+     `execute()` + `// TODO` rules. NEVER invent a story silently: made-up validation is
+     worse than none.
 
 **NO — guided manual path:** URL → app or external host? → custom headers (paste or "none") →
 method (GET/POST/PUT/DELETE) → request body JSON or "none" (POST/PUT) / query+path params
@@ -90,8 +100,10 @@ method (GET/POST/PUT/DELETE) → request body JSON or "none" (POST/PUT) / query+
 codes; kept as a doc comment on the use case. Skipped → pass-through + `// TODO`. Arabic
 strings in the story flow into `ar.json`.
 
-**Multi mode:** after each endpoint → "next" or "submit". On submit show a summary table of ALL
-endpoints first; user can say "edit #N" before generation.
+**Multi mode:** after finishing EVERY endpoint's intake, explicitly ask: **"paste the next
+curl/endpoint, or submit?"** — even when the user initially said "single endpoint", offer one
+"anything else to add?" before generating. On submit show a summary table of ALL endpoints
+first; user can say "edit #N" before generation.
 
 **PUT/DELETE:** `IHttpClient` has them commented out. If the spec needs one, YOU edit
 `src/core/http/IHttpClient.ts` + `HttpClientService.ts` by hand, mirroring the existing
