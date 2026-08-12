@@ -1,0 +1,166 @@
+#!/usr/bin/env node
+/**
+ * migrate-feature.js — upgrade a previously generated feature to the CURRENT
+ * template version, using its persisted feature-spec.json. Node stdlib only.
+ *
+ * Usage:
+ *   node migrate-feature.js <FeatureName> [--repo <path>]                     dry run
+ *   node migrate-feature.js <FeatureName> [--repo <path>] --apply             execute
+ *   node migrate-feature.js <FeatureName> [--repo <path>] --include-types …   also regenerate dtos + entities
+ *   node migrate-feature.js --help
+ *
+ * Strategy — regenerate only what the machine owns, preserve what hands wrote:
+ *
+ *   REGENERATED (machine-owned; transport + contracts):
+ *     data/endpoints/endpoints.ts · data/services/<F>Service.ts ·
+ *     data/repositories/<F>Repository.ts · domain/IServices/* ·
+ *     domain/IRepositories/* · domain/errors/<F>Error.ts
+ *     (hand-added error CODES are extracted from the existing file and merged
+ *      into the new one — a 1.0.0 union or a 1.1.0+ values array both parse)
+ *
+ *   PRESERVED (hand-written or hand-tuned; never touched):
+ *     domain/usecases/* (business rules) · data/mappers/* (status derivation) ·
+ *     __tests__/* (rule tests) · presentation/** (screens/translations) ·
+ *     data/dtos/* and domain/entities/* (types may carry hand-fixed overrides —
+ *     pass --include-types to regenerate them too)
+ *
+ * After --apply the persisted spec is re-stamped with the current skillVersion.
+ * Always finish with `audit.js <persisted-spec> --repo <repo>`.
+ */
+'use strict';
+
+const fs = require('fs');
+const path = require('path');
+const { featureModel, buildFilePlan, pascal, SKILL_VERSION } = require('./generate.js');
+
+const HELP = `migrate-feature.js — regenerate a feature's machine-owned files with the current templates.
+
+Usage:
+  node migrate-feature.js <FeatureName> [--repo <path>]                    dry run (default)
+  node migrate-feature.js <FeatureName> [--repo <path>] --apply            write the upgrades
+  node migrate-feature.js <FeatureName> ... --include-types                also regenerate dtos + entities
+
+Needs src/features/<FeatureName>/feature-spec.json. Hand-written files
+(use cases, mappers, tests, presentation, translations) are never touched;
+hand-added error codes are merged into the regenerated errors file.
+Finish with audit.js to re-verify the feature.`;
+
+const DEFAULT_ERROR_CODES = new Set(['NETWORK_ERROR', 'HTTP_ERROR', 'PARSE_ERROR', 'VALIDATION_ERROR']);
+
+/** Which planned files the migration owns. Paths are repo-relative. */
+function isMachineOwned(relative, f, includeTypes) {
+    const inFeature = (sub) => relative.includes(`${path.sep}${f.feature}${path.sep}${sub}`);
+    if (inFeature(path.join('data', 'endpoints') + path.sep)) return true;
+    if (inFeature(path.join('data', 'services') + path.sep)) return true;
+    if (inFeature(path.join('data', 'repositories') + path.sep)) return true;
+    if (inFeature(path.join('domain', 'IServices') + path.sep)) return true;
+    if (inFeature(path.join('domain', 'IRepositories') + path.sep)) return true;
+    if (inFeature(path.join('domain', 'errors') + path.sep)) return true;
+    if (includeTypes && inFeature(path.join('data', 'dtos') + path.sep)) return true;
+    if (includeTypes && inFeature(path.join('domain', 'entities') + path.sep)) return true;
+    return false;
+}
+
+/** Every 'SCREAMING_SNAKE' code quoted in the existing errors file (union OR array form). */
+function extractErrorCodes(content) {
+    return [...content.matchAll(/'([A-Z][A-Z0-9_]*)'/g)].map((match) => match[1]);
+}
+
+/** Inject hand-added codes into the regenerated <FEATURE>_ERROR_CODE_VALUES array. */
+function mergeErrorCodes(newContent, extraCodes) {
+    if (!extraCodes.length) return newContent;
+    const insertion = extraCodes.map((code) => `    '${code}',`).join('\n');
+    return newContent.replace(/\n\] as const;/, `\n${insertion}\n] as const;`);
+}
+
+function main() {
+    const argv = process.argv.slice(2);
+    if (!argv.length || argv.includes('--help') || argv.includes('-h')) {
+        console.log(HELP);
+        return argv.length ? 0 : 1;
+    }
+    const repoIndex = argv.indexOf('--repo');
+    const repo = repoIndex >= 0 ? path.resolve(argv[repoIndex + 1]) : process.cwd();
+    const apply = argv.includes('--apply');
+    const includeTypes = argv.includes('--include-types');
+    const featureArg = argv.find((a, i) => !a.startsWith('--') && !(repoIndex >= 0 && i === repoIndex + 1));
+    if (!featureArg) {
+        console.error('migrate-feature.js: missing <FeatureName>. See --help.');
+        return 1;
+    }
+
+    const feature = pascal(featureArg);
+    const specPath = path.join(repo, 'src', 'features', feature, 'feature-spec.json');
+    if (!fs.existsSync(specPath)) {
+        console.error(`migrate-feature.js: ${path.relative(repo, specPath)} not found — only features with a persisted spec can migrate (pre-skill features are out of scope).`);
+        return 1;
+    }
+    let spec;
+    try {
+        spec = JSON.parse(fs.readFileSync(specPath, 'utf8'));
+    } catch (error) {
+        console.error(`migrate-feature.js: persisted spec unreadable: ${error.message}`);
+        return 1;
+    }
+
+    const fromVersion = spec.skillVersion ?? '1.0.0 (pre-stamping)';
+    const f = featureModel(spec);
+    const { files, perEndpoint } = buildFilePlan(spec, f);
+    const planned = new Map([...files, ...perEndpoint]);
+
+    const report = {
+        mode: apply ? 'apply' : 'dry-run',
+        feature,
+        fromVersion,
+        toVersion: SKILL_VERSION,
+        updated: [],
+        unchanged: [],
+        preserved: [],
+        mergedErrorCodes: [],
+        problems: [],
+    };
+
+    for (const [relative, plannedContent] of planned) {
+        const absolute = path.join(repo, relative);
+        if (!isMachineOwned(relative, f, includeTypes)) {
+            report.preserved.push(relative);
+            continue;
+        }
+        let nextContent = plannedContent;
+        const existing = fs.existsSync(absolute) ? fs.readFileSync(absolute, 'utf8') : null;
+
+        if (relative.includes(`${path.sep}errors${path.sep}`) && existing) {
+            const extraCodes = [...new Set(extractErrorCodes(existing))].filter((code) => !DEFAULT_ERROR_CODES.has(code));
+            nextContent = mergeErrorCodes(nextContent, extraCodes);
+            report.mergedErrorCodes.push(...extraCodes);
+        }
+
+        if (existing === nextContent) {
+            report.unchanged.push(relative);
+            continue;
+        }
+        if (existing === null) {
+            report.problems.push(`${relative}: expected file missing — run generate.js in append/create mode instead of migrating`);
+            continue;
+        }
+        if (apply) {
+            fs.writeFileSync(absolute, nextContent);
+        }
+        report.updated.push(relative);
+    }
+
+    if (apply && !report.problems.length) {
+        spec.skillVersion = SKILL_VERSION;
+        fs.writeFileSync(specPath, JSON.stringify(spec, null, 2) + '\n');
+    }
+
+    console.log(JSON.stringify(report, null, 2));
+    console.log(apply
+        ? `\nMigrated to ${SKILL_VERSION}. Review \`git diff\`, then run audit.js against ${path.relative(repo, specPath)}.`
+        : '\nDry run only — re-run with --apply to execute.');
+    return report.problems.length ? 2 : 0;
+}
+
+if (require.main === module) {
+    process.exit(main());
+}

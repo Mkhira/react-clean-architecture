@@ -33,6 +33,9 @@ never enters the context window, only compact script output does.
 | `scripts/register-di.js` | DI + i18n + config + env wiring, idempotent |
 | `scripts/audit.js` | tsc baseline diff · jest · structure/DI/env/secret checks |
 | `scripts/rollback.js` | manifest-scoped undo: dry-run plan, `--apply` deletes created files + git-restores patched ones |
+| `scripts/remove-feature.js` | delete a long-merged feature everywhere (dir + DI + i18n + config + env), spec-driven |
+| `scripts/rename-feature.js` | rename a feature across code/DI/i18n/config/env via its derived identifiers only |
+| `scripts/migrate-feature.js` | upgrade a feature to the current templates; merges hand-added error codes, preserves hand-written files |
 
 All scripts run on plain Node (stdlib only) and support `--help`. generate.js validates the
 spec up front (duplicate actions, unsupported methods, orphan path placeholders, incomplete
@@ -65,7 +68,7 @@ anchors + the persisted sanitized `feature-spec.json` give it full prior context
 
 ## Testing the skill itself
 
-The skill ships with its own suite (72 tests) built on Node's built-in runner — still zero
+The skill ships with its own suite (83 tests) built on Node's built-in runner — still zero
 dependencies:
 
 ```bash
@@ -101,14 +104,23 @@ per-feature spec is sanitized (`<env:KEY>` references). The audit fails on a rea
 in `.env.example` and on raw secrets inside generated code. Session/Bearer headers are never
 emitted — the HttpClient auth layer owns them.
 
-## Out of scope (v1)
+## Out of scope
 
-- Feature removal/rename (DI + env + i18n cleanup)
-- Migrating previously generated features to newer template versions
 - Upload/multipart endpoints (use `IHttpClient.upload()` manually)
 - Navigation wiring (expo-router route files are added by hand)
+- Removing/renaming/migrating **pre-skill** features (no persisted spec — manual)
 
 ## Version
+
+**1.2.0**
+- feature lifecycle: `remove-feature.js` (full unwire), `rename-feature.js`
+  (derived-identifier-safe), `migrate-feature.js` (template upgrades with error-code merge,
+  hand-written files preserved)
+- deep core review fixes: POST/PUT with path/query params now generates consistent
+  service/repository/interface signatures; non-nullable nested objects map directly (no
+  contradictory `: null` fallback); GET/DELETE with a body and colliding input names are
+  rejected at validation time
+- test suite grown to 83
 
 **1.1.0**
 - `rollback.js`: deterministic manifest-scoped undo (register-di edits now recorded in the

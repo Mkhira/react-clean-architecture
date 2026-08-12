@@ -275,7 +275,9 @@ function mapperToDomainBody(f, e) {
                 const childDto = `${e.responseDTO.replace(/DTO$/, '')}${pascal(key)}DTO`;
                 helpers.push(objectMappingFn(value, dotPath, childDto, `${e.ActionPascal}${pascal(key)}`, childFn));
                 const nullable = ((e.typeOverrides ?? {})[dotPath] ?? '').includes('null');
-                lines.push(`        ${name}: ${source}.${key} ${nullable ? `? ${childFn}(${source}.${key}) : null` : `!= null ? ${childFn}(${source}.${key}) : null`},`);
+                // non-nullable nested objects map directly — a `: null` fallback
+                // would contradict the entity type under strict TS
+                lines.push(`        ${name}: ${nullable ? `${source}.${key} ? ${childFn}(${source}.${key}) : null` : `${childFn}(${source}.${key})`},`);
             }
         }
         return lines;
@@ -414,8 +416,10 @@ ${entries.join('\n')}
 }
 
 function serviceMethodArgs(e) {
-    if (e.hasBody) return [`payload: ${e.requestDTO}`];
+    // path params ALWAYS come through — the endpoint URL expression needs them
+    // regardless of whether a body is present
     const args = e.pathParams.map((p) => `${camel(p.name)}: ${p.type || 'string'}`);
+    if (e.hasBody) args.push(`payload: ${e.requestDTO}`);
     if (e.queryParams.length) {
         const queryFields = e.queryParams.map((p) => `${camel(p.name)}: ${p.type || 'string'}`).join('; ');
         args.push(`query: { ${queryFields} }`);
@@ -577,23 +581,21 @@ ${helpers}${methods.join('\n\n')}
 
 function repositoryMethod(f, e) {
     const inputArg = e.inputFields.length ? `input: ${e.input}` : '';
-    let callArgs;
-    if (e.hasBody) {
-        callArgs = 'payload';
-    } else {
-        const args = e.pathParams.map((p) => `input.${camel(p.name)}`);
-        if (e.queryParams.length) {
-            args.push(`{ ${e.queryParams.map((p) => `${camel(p.name)}: input.${camel(p.name)}`).join(', ')} }`);
-        }
-        callArgs = args.join(', ');
-    }
+    // mirror serviceMethodArgs exactly: path params, then payload, then query
+    const callArgs = [
+        ...e.pathParams.map((p) => `input.${camel(p.name)}`),
+        ...(e.hasBody ? ['payload'] : []),
+        ...(e.queryParams.length
+            ? [`{ ${e.queryParams.map((p) => `${camel(p.name)}: input.${camel(p.name)}`).join(', ')} }`]
+            : []),
+    ].join(', ');
 
     if (e.hasBody) {
         const deviceLine = e.usesDevice ? `        const device = await this.getDeviceMetadata();\n` : '';
         const deviceArg = e.usesDevice ? ', device' : '';
         return `    async ${e.actionCamel}(${inputArg}): Promise<${e.returnType}> {
 ${deviceLine}        const payload = ${e.mapper}.toDTO(input${deviceArg});
-        return this.apiService.${e.actionCamel}(payload);
+        return this.apiService.${e.actionCamel}(${callArgs});
     }`;
     }
     return `    async ${e.actionCamel}(${inputArg}): Promise<${e.returnType}> {
@@ -1297,6 +1299,23 @@ function validateSpec(spec) {
         if (endpoint.statusEnum && !(endpoint.statusEnum.values ?? []).length) {
             problems.push(`${label}: statusEnum needs at least one value.`);
         }
+
+        if (endpoint.requestSample && ['GET', 'DELETE'].includes(endpoint.method)) {
+            problems.push(`${label}: ${endpoint.method} endpoints must not carry a request body — move the values to queryParams or pathParams.`);
+        }
+
+        // colliding input names (e.g. body field "Id" + path param "id") would
+        // emit a duplicate field in the Input type
+        const inputNames = [
+            ...Object.entries(endpoint.requestFieldSources ?? {})
+                .filter(([, source]) => source === 'input' || source === 'session')
+                .map(([field]) => camel(field)),
+            ...(endpoint.pathParams ?? []).map((p) => camel(p.name)),
+            ...(endpoint.queryParams ?? []).map((p) => camel(p.name)),
+        ];
+        for (const name of inputNames.filter((name, i) => inputNames.indexOf(name) !== i)) {
+            problems.push(`${label}: input field "${name}" appears more than once across body/path/query — rename one of them.`);
+        }
     }
     return problems;
 }
@@ -1383,4 +1402,6 @@ if (require.main === module) {
     process.exit(main());
 }
 
-module.exports = { featureModel, buildFilePlan };
+const SKILL_VERSION = '1.2.0';
+
+module.exports = { featureModel, buildFilePlan, validateSpec, pascal, camel, snakeUpper, SKILL_VERSION };

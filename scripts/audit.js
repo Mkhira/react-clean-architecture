@@ -22,7 +22,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { featureModel, buildFilePlan } = require('./generate.js');
+const { featureModel, buildFilePlan, SKILL_VERSION } = require('./generate.js');
 
 const HELP = `audit.js — audit a generated feature (structure, DI, env, tsc diff, jest).
 
@@ -285,8 +285,6 @@ function checkJest(repo, f) {
 }
 
 // -------------------------------------------------------------- persist ----
-
-const SKILL_VERSION = '1.1.0';
 
 function sanitizedSpec(spec) {
     const clone = JSON.parse(JSON.stringify(spec));
