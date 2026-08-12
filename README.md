@@ -60,6 +60,29 @@ schema, and [AUDIT.md](AUDIT.md) for every audit check.
 Adding an endpoint to a feature the skill created earlier is automatic (**append mode** —
 anchors + the persisted sanitized `feature-spec.json` give it full prior context).
 
+## Testing the skill itself
+
+The skill ships with its own suite (48 tests) built on Node's built-in runner — still zero
+dependencies:
+
+```bash
+node --test tests/*.test.js
+```
+
+- `tests/parse-curl.test.js` / `tests/json-to-dto.test.js` — unit tests for the parsers
+  (curl/Postman shapes, quotes/continuations, multipart, overrides, merged array items, …).
+- `tests/generate.test.js` — scenario tests against temp fixture repos: create/append modes,
+  never-overwrite, anchors, external transport helpers, session-header exclusion, statusEnum
+  TODO, device provenance, pre-skill fallback, mixed-host ctor detection.
+- `tests/register-di.test.js` — anchor planting, DI/i18n/config wiring, 6-file env policy,
+  idempotency, token-collision refusal, internal/BFF reuse.
+- `tests/audit.test.js` — every audit check driven to both PASS and FAIL, spec sanitization,
+  persist-only-on-PASS.
+
+The fixture repos in `tests/helpers.js` mirror the real app files' shapes, so the scripts'
+regexes are exercised against realistic targets. The tsc-diff and jest audit steps are covered
+by the eval scenarios (`evals/`) against a real repo copy rather than by these unit tests.
+
 ## Requirements
 
 - The zatcaReact repo (or a fork with the same conventions: tsyringe `TOKENS`/`TokenRegistry`,

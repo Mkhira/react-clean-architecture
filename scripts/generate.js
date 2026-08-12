@@ -882,7 +882,9 @@ function expectedCleaned(value) {
 }
 
 function mapperTestFile(f, e) {
-    const sample = Array.isArray(e.responseSample) ? e.responseSample[0] ?? {} : e.responseSample;
+    const sample = e.hasResponse
+        ? (Array.isArray(e.responseSample) ? e.responseSample[0] ?? {} : e.responseSample)
+        : {};
     const statusField = e.statusEnum ? camel(e.statusEnum.field) : null;
     const dateFields = e.dateFields ?? [];
     const asserts = [];
@@ -961,10 +963,12 @@ ${dtoAsserts.join('\n')}
         ? `\njest.mock('@shared/components', () => ({}));\n`
         : '';
 
-    return `${imports.join('\n')}
-${barrelMock}
-const SAMPLE = ${JSON.stringify(e.responseSample, null, 4)} as const;
+    const sampleConst = e.hasResponse
+        ? `\nconst SAMPLE = ${JSON.stringify(e.responseSample, null, 4)} as const;\n`
+        : '';
 
+    return `${imports.join('\n')}
+${barrelMock}${sampleConst}
 describe('${e.mapper}', () => {${e.hasResponse ? `
     it('toDomain maps the sample response to the domain entity', () => {
         const mapped = ${e.mapper}.toDomain(SAMPLE as never);
@@ -1203,17 +1207,21 @@ function appendFeature(repo, spec, f, manifest) {
         }
     }
 
-    // note ctor implications for mixed-host transitions — scripts cannot change a ctor
+    // note ctor implications for mixed-host transitions — scripts cannot change
+    // a ctor. Inspect the ctor PARAMETER LIST and helper DEFINITIONS, not the
+    // whole file: the just-inserted method bodies mention configService /
+    // requestExternal themselves and would self-satisfy a substring check.
     const serviceFilePath = path.join(base, 'data', 'services', `${f.serviceClass}.ts`);
     if (fs.existsSync(serviceFilePath)) {
         const content = fs.readFileSync(serviceFilePath, 'utf8');
-        if (f.hasExternal && !content.includes('configService')) {
+        const ctorParams = (content.match(/constructor\s*\(([^)]*)\)/s) ?? [null, ''])[1];
+        if (f.hasExternal && !ctorParams.includes('configService')) {
             manifest.needsManual.push(`${path.relative(repo, serviceFilePath)}: new external endpoint but the ctor lacks configService — add "private readonly configService: IConfigService" (+ its import and the DI registration argument) by hand`);
         }
-        if (f.hasExternal && !content.includes('requestExternal')) {
+        if (f.hasExternal && !content.includes('private async requestExternal')) {
             manifest.needsManual.push(`${path.relative(repo, serviceFilePath)}: new external endpoint but the service lacks the requestExternal/parseExternalJson helpers — copy them from a skill-generated external service (or examples/expected-output)`);
         }
-        if (f.hasApp && !content.includes('httpClient')) {
+        if (f.hasApp && !ctorParams.includes('httpClient')) {
             manifest.needsManual.push(`${path.relative(repo, serviceFilePath)}: new app-host endpoint but the ctor lacks httpClient — add "private readonly httpClient: IHttpClient" (+ its import and the DI registration argument) by hand`);
         }
     }
