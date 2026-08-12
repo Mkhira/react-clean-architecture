@@ -125,7 +125,9 @@ everything you hand-write. (`cleanString` stays mapper-local; that is the repo c
 3. Hand-write ONLY: the use-case `execute()` rules from the story, the mapper's
    `TODO(claude): status derivation` block (if statusEnum), the rule tests marked
    `TODO(claude)` in `__tests__/`, and Arabic translation values. Match the generated code
-   style; keep the sample-derived test inputs valid under your new rules.
+   style; keep the sample-derived test inputs valid under your new rules. New error codes go
+   into the `<FEATURE>_ERROR_CODE_VALUES` array in the errors file — the union type and the
+   runtime guard both derive from it.
 4. `node <skill>/scripts/register-di.js <spec>` — DI + i18n + AppConfig/ConfigService + all
    SIX env files (real values only in `.env` + `.env.development`; the rest get placeholders —
    they are committed to git). First run plants permanent anchors (approved one-time edit).

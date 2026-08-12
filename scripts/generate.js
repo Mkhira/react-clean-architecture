@@ -124,6 +124,7 @@ function featureModel(spec) {
         repositoryInterface: `I${feature}Repository`,
         errorType: `${feature}Error`,
         errorCodes: `${feature.toUpperCase() === feature ? feature : snakeUpper(feature)}_ERROR_CODES`,
+        errorCodeValues: `${feature.toUpperCase() === feature ? feature : snakeUpper(feature)}_ERROR_CODE_VALUES`,
         errorFactory: `create${feature}Error`,
         errorGuard: `is${feature}Error`,
         hasExternal: endpoints.some((endpoint) => endpoint.hostType === 'external'),
@@ -448,17 +449,58 @@ function appServiceMethod(f, e) {
     return `    async ${e.actionCamel}(${args}): Promise<${e.returnType}> {\n${body}\n    }`;
 }
 
+/**
+ * Shared transport helpers, emitted ONCE per service that has external
+ * endpoints — every external method delegates here so the abort/timeout and
+ * NETWORK/HTTP/PARSE error-mapping policy lives in exactly one place.
+ */
+function externalServiceHelpers(f) {
+    const parseHelper = f.endpoints.some((e) => e.hostType === 'external' && e.hasResponse)
+        ? `
+
+    private async parseExternalJson<TResponseDTO>(action: string, response: Response): Promise<TResponseDTO> {
+        try {
+            return (await response.json()) as TResponseDTO;
+        } catch (error) {
+            throw ${f.errorFactory}('PARSE_ERROR', \`\${action} response was not valid JSON\`, error);
+        }
+    }`
+        : '';
+    return `    private async requestExternal(
+        action: string,
+        url: string,
+        init: { method: string; headers: Record<string, string>; body?: string }
+    ): Promise<Response> {
+        const { timeout } = this.configService.get();
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeout);
+        let response: Response;
+        try {
+            response = await fetch(url, { ...init, signal: controller.signal });
+        } catch (error) {
+            throw ${f.errorFactory}('NETWORK_ERROR', \`\${action} request failed\`, error);
+        } finally {
+            clearTimeout(timer);
+        }
+        if (!response.ok) {
+            const text = await response.text();
+            throw ${f.errorFactory}('HTTP_ERROR', \`\${action} HTTP \${response.status}: \${text}\`);
+        }
+        return response;
+    }${parseHelper}`;
+}
+
 function externalServiceMethod(f, e) {
     const args = serviceMethodArgs(e).join(', ');
     const baseField = e.baseUrl.configField;
     const envHeaderFields = (e.headers ?? []).filter((h) => h.source === 'env').map((h) => h.configField);
-    const destructured = [...new Set([baseField, ...envHeaderFields, 'timeout'])].join(', ');
+    const destructured = [...new Set([baseField, ...envHeaderFields])].join(', ');
 
     const headerLines = (e.headers ?? [])
         .filter((h) => h.source !== 'session')
         .map((h) => {
             const key = quoteKey(h.name);
-            return h.source === 'env' ? `                    ${key}: ${h.configField},` : `                    ${key}: ${JSON.stringify(h.value)},`;
+            return h.source === 'env' ? `                ${key}: ${h.configField},` : `                ${key}: ${JSON.stringify(h.value)},`;
         });
 
     const urlExpr = endpointUrlExpr(f, e);
@@ -474,43 +516,26 @@ function externalServiceMethod(f, e) {
         urlBuild = '        const url = `${' + baseField + '}${' + urlExpr + '}`;';
     }
 
-    const fetchOptions = [
-        `                method: '${e.method}',`,
-        `                headers: {\n${headerLines.join('\n')}\n                },`,
+    const callPrefix = e.hasResponse ? 'const response = ' : '';
+    const requestLines = [
+        `        ${callPrefix}await this.requestExternal('${e.actionCamel}', url, {`,
+        `            method: '${e.method}',`,
+        `            headers: {`,
+        ...headerLines,
+        `            },`,
     ];
-    if (e.hasBody) fetchOptions.push(`                body: JSON.stringify(payload),`);
-    fetchOptions.push(`                signal: controller.signal,`);
+    if (e.hasBody) requestLines.push(`            body: JSON.stringify(payload),`);
+    requestLines.push(`        });`);
 
-    const parseSection = e.hasResponse
-        ? `        let dto: ${e.responseDTO};
-        try {
-            dto = (await response.json()) as ${e.responseDTO};
-        } catch (error) {
-            throw ${f.errorFactory}('PARSE_ERROR', '${e.actionCamel} response was not valid JSON', error);
-        }
+    const resultSection = e.hasResponse
+        ? `\n        const dto = await this.parseExternalJson<${e.responseDTO}>('${e.actionCamel}', response);
         return ${e.mapper}.toDomain(dto);`
-        : `        return;`;
+        : '';
 
     return `    async ${e.actionCamel}(${args}): Promise<${e.returnType}> {
         const { ${destructured} } = this.configService.get();
 ${urlBuild}
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), timeout);
-        let response: Response;
-        try {
-            response = await fetch(url, {
-${fetchOptions.join('\n')}
-            });
-        } catch (error) {
-            throw ${f.errorFactory}('NETWORK_ERROR', '${e.actionCamel} request failed', error);
-        } finally {
-            clearTimeout(timer);
-        }
-        if (!response.ok) {
-            const text = await response.text();
-            throw ${f.errorFactory}('HTTP_ERROR', \`${e.actionCamel} HTTP \${response.status}: \${text}\`);
-        }
-${parseSection}
+${requestLines.join('\n')}${resultSection}
     }`;
 }
 
@@ -536,12 +561,14 @@ function serviceFile(f) {
         }
     }
 
+    const helpers = f.hasExternal ? `${externalServiceHelpers(f)}\n\n` : '';
+
     return `${[...new Set(imports)].join('\n')}
 
 export class ${f.serviceClass} implements ${f.serviceInterface} {
     constructor(${ctorParams.length ? `\n        ${ctorParams.join(',\n        ')},\n    ` : ''}) {}
 
-${methods.join('\n\n')}
+${helpers}${methods.join('\n\n')}
 
     // <create-feature:methods>
 }
@@ -552,7 +579,7 @@ function repositoryMethod(f, e) {
     const inputArg = e.inputFields.length ? `input: ${e.input}` : '';
     let callArgs;
     if (e.hasBody) {
-        callArgs = e.usesDevice ? 'payload' : 'payload';
+        callArgs = 'payload';
     } else {
         const args = e.pathParams.map((p) => `input.${camel(p.name)}`);
         if (e.queryParams.length) {
@@ -653,11 +680,16 @@ ${signatures.join('\n')}
 function errorsFile(f) {
     return `import type { AppError } from '@shared/types/errors';
 
-export type ${f.errorCodes} =
-    | 'NETWORK_ERROR'
-    | 'HTTP_ERROR'
-    | 'PARSE_ERROR'
-    | 'VALIDATION_ERROR';
+// Single source of truth for this feature's error codes — the union type and
+// the runtime guard both derive from it, so adding a code is a one-line change.
+export const ${f.errorCodeValues} = [
+    'NETWORK_ERROR',
+    'HTTP_ERROR',
+    'PARSE_ERROR',
+    'VALIDATION_ERROR',
+] as const;
+
+export type ${f.errorCodes} = (typeof ${f.errorCodeValues})[number];
 
 export type ${f.errorType} = Omit<AppError, 'code'> & {
     code: ${f.errorCodes};
@@ -670,7 +702,10 @@ export const ${f.errorFactory} = (
 ): ${f.errorType} => ({ code, message, originalError });
 
 export const ${f.errorGuard} = (error: unknown): error is ${f.errorType} =>
-    typeof error === 'object' && error !== null && 'code' in error && 'message' in error;
+    typeof error === 'object' &&
+    error !== null &&
+    'message' in error &&
+    ${f.errorCodeValues}.includes((error as { code?: unknown }).code as ${f.errorCodes});
 `;
 }
 
@@ -1174,6 +1209,9 @@ function appendFeature(repo, spec, f, manifest) {
         const content = fs.readFileSync(serviceFilePath, 'utf8');
         if (f.hasExternal && !content.includes('configService')) {
             manifest.needsManual.push(`${path.relative(repo, serviceFilePath)}: new external endpoint but the ctor lacks configService — add "private readonly configService: IConfigService" (+ its import and the DI registration argument) by hand`);
+        }
+        if (f.hasExternal && !content.includes('requestExternal')) {
+            manifest.needsManual.push(`${path.relative(repo, serviceFilePath)}: new external endpoint but the service lacks the requestExternal/parseExternalJson helpers — copy them from a skill-generated external service (or examples/expected-output)`);
         }
         if (f.hasApp && !content.includes('httpClient')) {
             manifest.needsManual.push(`${path.relative(repo, serviceFilePath)}: new app-host endpoint but the ctor lacks httpClient — add "private readonly httpClient: IHttpClient" (+ its import and the DI registration argument) by hand`);
