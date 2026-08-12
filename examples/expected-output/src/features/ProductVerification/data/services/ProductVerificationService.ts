@@ -6,7 +6,6 @@ import { createProductVerificationError } from '../../domain/errors/ProductVerif
 import type { VerifyProductCodeRequestDTO, VerifyProductCodeResponseDTO } from '../dtos/VerifyProductCodeDTO';
 import type { VerifyProductCodeResult } from '../../domain/entities/VerifyProductCodeResult';
 import { VerifyProductCodeMapper } from '../mappers/VerifyProductCodeMapper';
-import type { GetScanHistoryResponseDTO } from '../dtos/GetScanHistoryDTO';
 import type { GetScanHistoryResult } from '../../domain/entities/GetScanHistoryResult';
 import { GetScanHistoryMapper } from '../mappers/GetScanHistoryMapper';
 
@@ -65,8 +64,8 @@ export class ProductVerificationService implements IProductVerificationService {
     }
 
     async getScanHistory(query: { from: string }): Promise<GetScanHistoryResult> {
-        const response = await this.httpClient.get<GetScanHistoryResponseDTO>(PRODUCT_VERIFICATION_ENDPOINTS.GET_SCAN_HISTORY, { params: query });
-        return GetScanHistoryMapper.toDomain(response.data);
+        const response = await this.httpClient.get<GetScanHistoryResult>(PRODUCT_VERIFICATION_ENDPOINTS.GET_SCAN_HISTORY, { mapper: GetScanHistoryMapper.toDomain, params: query });
+        return response.data;
     }
 
     // <create-feature:methods>

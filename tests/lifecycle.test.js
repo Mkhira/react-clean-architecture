@@ -52,7 +52,7 @@ test('CORE: app-host POST with query params passes axios params config', () => {
     const repo = makeFixtureRepo();
     runScript('generate.js', [writeSpec(makeTmpDir('s'), spec), '--repo', repo]);
     const service = read(repo, 'src/features/OrderTracking/data/services/OrderTrackingService.ts');
-    assert.match(service, /this\.httpClient\.post<TrackOrderResponseDTO>\(ORDER_TRACKING_ENDPOINTS\.TRACK_ORDER, payload, \{ params: query \}\)/);
+    assert.match(service, /this\.httpClient\.post<TrackOrderResult>\(ORDER_TRACKING_ENDPOINTS\.TRACK_ORDER, payload, \{ mapper: TrackOrderMapper\.toDomain, params: query \}\)/);
 });
 
 test('CORE: NON-nullable nested objects map directly — no contradictory ": null" fallback', () => {
@@ -233,7 +233,8 @@ export const isOrderTrackingError = (error: unknown): error is OrderTrackingErro
 
     assert.match(read(repo, 'src/features/OrderTracking/data/services/OrderTrackingService.ts'), /private async requestExternal/);
     assert.match(read(repo, 'src/features/OrderTracking/domain/usecases/TrackOrderUseCase.ts'), /HAND WRITTEN RULES/, 'hand-written use case preserved');
-    assert.match(read(repo, 'src/features/OrderTracking/feature-spec.json'), /"skillVersion": "1\.2\.0"/);
+    const { SKILL_VERSION } = require('../scripts/generate.js');
+    assert.ok(read(repo, 'src/features/OrderTracking/feature-spec.json').includes(`"skillVersion": "${SKILL_VERSION}"`));
 });
 
 test('migrate: refuses features without a persisted spec', () => {

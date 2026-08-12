@@ -21,7 +21,10 @@ export class VerifyProductCodeUseCase implements IUseCase<VerifyProductCodeInput
             if (isProductVerificationError(error)) {
                 return Result.err(error);
             }
-            return Result.err(createProductVerificationError('NETWORK_ERROR', 'verifyProductCode failed', error));
+            // app-host rejections carry the API envelope — surface its description
+            const description = (error as { header?: { status?: { description?: string } } })
+                ?.header?.status?.description;
+            return Result.err(createProductVerificationError('NETWORK_ERROR', description || 'verifyProductCode failed', error));
         }
     }
 }

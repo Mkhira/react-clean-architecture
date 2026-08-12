@@ -436,8 +436,14 @@ function endpointUrlExpr(f, e) {
 function appServiceMethod(f, e) {
     const args = serviceMethodArgs(e).join(', ');
     const urlExpr = endpointUrlExpr(f, e);
-    const generic = e.hasResponse ? e.responseDTO : 'void';
-    const config = e.queryParams.length ? ', { params: query }' : '';
+    // the app's HttpClient maps INSIDE the envelope interceptor (and warns when
+    // no mapper is given) — pass the domain mapper in the config, so the
+    // generic is the DOMAIN type and response.data is already mapped
+    const generic = e.hasResponse ? e.returnType : 'void';
+    const configEntries = [];
+    if (e.hasResponse) configEntries.push(`mapper: ${e.mapper}.toDomain`);
+    if (e.queryParams.length) configEntries.push('params: query');
+    const config = configEntries.length ? `, { ${configEntries.join(', ')} }` : '';
     let call;
     if (e.method === 'GET') {
         call = `await this.httpClient.get<${generic}>(${urlExpr}${config})`;
@@ -448,7 +454,7 @@ function appServiceMethod(f, e) {
         call = `await this.httpClient.${e.method.toLowerCase()}<${generic}>(${urlExpr}${e.method === 'PUT' ? `, ${e.hasBody ? 'payload' : 'undefined'}` : ''}${config})`;
     }
     const body = e.hasResponse
-        ? `        const response = ${call};\n        return ${e.mapper}.toDomain(response.data);`
+        ? `        const response = ${call};\n        return response.data;`
         : `        ${call};`;
     return `    async ${e.actionCamel}(${args}): Promise<${e.returnType}> {\n${body}\n    }`;
 }
@@ -557,7 +563,13 @@ function serviceFile(f) {
     imports.push(`import { ${f.FEATURE_SNAKE}_ENDPOINTS } from '../endpoints/endpoints';`);
     if (f.hasExternal) imports.push(`import { ${f.errorFactory} } from '../../domain/errors/${f.errorType}';`);
     for (const e of f.endpoints) {
-        const dtoNames = [e.hasBody ? e.requestDTO : null, e.hasResponse ? e.responseDTO : null].filter(Boolean);
+        // the ResponseDTO is only referenced by external methods (parseExternalJson);
+        // app-host methods map inside the HttpClient config, so they need only
+        // the entity + mapper
+        const dtoNames = [
+            e.hasBody ? e.requestDTO : null,
+            e.hasResponse && e.hostType === 'external' ? e.responseDTO : null,
+        ].filter(Boolean);
         if (dtoNames.length) imports.push(`import type { ${dtoNames.join(', ')} } from '../dtos/${e.ActionPascal}DTO';`);
         if (e.hasResponse) {
             imports.push(`import type { ${e.entity} } from '../../domain/entities/${e.entity}';`);
@@ -749,7 +761,10 @@ ${callLine}
             if (${f.errorGuard}(error)) {
                 return Result.err(error);
             }
-            return Result.err(${f.errorFactory}('NETWORK_ERROR', '${e.actionCamel} failed', error));
+            // app-host rejections carry the API envelope — surface its description
+            const description = (error as { header?: { status?: { description?: string } } })
+                ?.header?.status?.description;
+            return Result.err(${f.errorFactory}('NETWORK_ERROR', description || '${e.actionCamel} failed', error));
         }
     }
 }
@@ -799,7 +814,8 @@ ${resultState}    const [error, setError] = React.useState<${f.errorType} | null
         if (Result.isOk(outcome)) {
 ${okBranch}
         } else {
-            logger.error('${first.actionCamel} failed', outcome.error);
+            // third arg = data → shows in the console (the second only reaches crash reporting)
+            logger.error('${first.actionCamel} failed', outcome.error, outcome.error);
             setError(outcome.error);
         }
         setIsLoading(false);
@@ -1105,7 +1121,10 @@ function ensureImports(content, importLines) {
 
 function serviceEndpointImports(f, e) {
     const imports = [];
-    const dtoNames = [e.hasBody ? e.requestDTO : null, e.hasResponse ? e.responseDTO : null].filter(Boolean);
+    const dtoNames = [
+        e.hasBody ? e.requestDTO : null,
+        e.hasResponse && e.hostType === 'external' ? e.responseDTO : null,
+    ].filter(Boolean);
     if (dtoNames.length) imports.push(`import type { ${dtoNames.join(', ')} } from '../dtos/${e.ActionPascal}DTO';`);
     if (e.hasResponse) {
         imports.push(`import type { ${e.entity} } from '../../domain/entities/${e.entity}';`);
@@ -1402,6 +1421,6 @@ if (require.main === module) {
     process.exit(main());
 }
 
-const SKILL_VERSION = '1.2.0';
+const SKILL_VERSION = '1.2.1';
 
 module.exports = { featureModel, buildFilePlan, validateSpec, pascal, camel, snakeUpper, SKILL_VERSION };

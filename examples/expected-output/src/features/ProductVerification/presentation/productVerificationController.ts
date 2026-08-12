@@ -28,7 +28,8 @@ export function useController() {
         if (Result.isOk(outcome)) {
             setResult(outcome.data);
         } else {
-            logger.error('verifyProductCode failed', outcome.error);
+            // third arg = data → shows in the console (the second only reaches crash reporting)
+            logger.error('verifyProductCode failed', outcome.error, outcome.error);
             setError(outcome.error);
         }
         setIsLoading(false);

@@ -105,7 +105,7 @@ test('app GET with query + path params: axios params config and function endpoin
     const endpoints = read(repo, 'src/features/OrderTracking/data/endpoints/endpoints.ts');
     assert.match(endpoints, /GET_ORDER_EVENTS: \(orderId: string\) => `\/v1\/orders\/\$\{orderId\}\/events`,/);
     const service = read(repo, 'src/features/OrderTracking/data/services/OrderTrackingService.ts');
-    assert.match(service, /this\.httpClient\.get<GetOrderEventsResponseDTO>\(ORDER_TRACKING_ENDPOINTS\.GET_ORDER_EVENTS\(orderId\), \{ params: query \}\)/);
+    assert.match(service, /this\.httpClient\.get<GetOrderEventsResult>\(ORDER_TRACKING_ENDPOINTS\.GET_ORDER_EVENTS\(orderId\), \{ mapper: GetOrderEventsMapper\.toDomain, params: query \}\)/);
     assert.ok(!service.includes('configService'), 'app-only service must not depend on IConfigService');
     // array response → no RequestDTO anywhere
     const dto = read(repo, 'src/features/OrderTracking/data/dtos/GetOrderEventsDTO.ts');

@@ -16,7 +16,10 @@ export class GetScanHistoryUseCase implements IUseCase<GetScanHistoryInput, Resu
             if (isProductVerificationError(error)) {
                 return Result.err(error);
             }
-            return Result.err(createProductVerificationError('NETWORK_ERROR', 'getScanHistory failed', error));
+            // app-host rejections carry the API envelope — surface its description
+            const description = (error as { header?: { status?: { description?: string } } })
+                ?.header?.status?.description;
+            return Result.err(createProductVerificationError('NETWORK_ERROR', description || 'getScanHistory failed', error));
         }
     }
 }
