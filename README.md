@@ -112,6 +112,12 @@ emitted — the HttpClient auth layer owns them.
 
 ## Version
 
+**1.3.1**
+- intake protocol hardened (live-run finding): the Step 2 question order is fixed and
+  unconditional — "single or multiple endpoints?" first, alone; then the curl; then response
+  body; then user story — ONE question per message, never bundled, regardless of Step 1's
+  folder/mode outcome
+
 **1.3.0**
 - generated tests live in `test/` (was `__tests__/`) — pre-1.3.0 features keep their existing
   `__tests__/` dir automatically (append/audit/migrate detect it)

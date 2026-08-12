@@ -29,7 +29,8 @@ questions for every choice point below.
 ```
 - [ ] 0. Baseline: node <skill>/scripts/audit.js --baseline
 - [ ] 1. Feature name → new feature or append?  Git tree clean?
-- [ ] 2. Per endpoint: curl / manual intake → response body → user story
+- [ ] 2. Single or multiple? → per endpoint: curl / manual intake → response body → user story
+        (ONE question per message, fixed order — see Step 2)
 - [ ] 3. Confirmation tables: headers / request-field provenance / status enum
 - [ ] 4. Write feature-spec.json (scratch dir, NOT the repo)
 - [ ] 5. node <skill>/scripts/generate.js <spec>
@@ -52,7 +53,20 @@ questions for every choice point below.
 
 ## Step 2 — Endpoint intake (repeat per endpoint)
 
-Ask: single or multiple endpoints? Then per endpoint: **"Do you have a curl command?"**
+**ONE QUESTION PER MESSAGE — this ordering is mandatory and unconditional.** It does not
+change based on Step 1's outcome (new feature, append, empty skeleton, dirty tree — none of
+that alters the intake order; report Step 1 results in one short line, not an analysis dump).
+Never bundle two questions into one message, and never invite combined answers like "paste
+the curl along with your choice". Ask, stop, wait for the answer, then ask the next.
+
+The fixed sequence:
+
+1. Ask ONLY: **"Single or multiple endpoints?"** — nothing else in that message. Wait.
+2. Then, for the current endpoint, ask ONLY: **"Do you have a curl command?"** (paste it, or
+   answer "no" for guided intake). Wait for the paste/answer.
+3. Then the **response body** question (three options below). Wait.
+4. Then the **user story** question (with its skip option). Wait.
+5. Multiple mode: after each endpoint completes, ask for the next curl or "submit".
 
 **YES — curl path (target: 3 pastes total per endpoint):**
 1. Paste → save to a scratch file → `node <skill>/scripts/parse-curl.js <file>`.
@@ -70,7 +84,8 @@ Ask: single or multiple endpoints? Then per endpoint: **"Do you have a curl comm
      no new env keys, omit `baseUrl.envKey`/`devValue`.
    - Anything else → `hostType: "external"` with a new `EXPO_PUBLIC_<FEATURE>_BASE_URL`.
 3. Numeric/UUID path segments → propose them as path params, user confirms which are dynamic.
-4. Then TWO real questions to the user, in order — never answer them yourself:
+4. Then TWO real questions to the user — each in its OWN message (sequence steps 3–4 above),
+   never answered by you and never merged into one message:
    - **Response body** — offer three numbered options:
      1. paste a sample JSON response;
      2. **let the skill EXECUTE the curl and capture the live response** (preferred when the
@@ -85,9 +100,9 @@ Ask: single or multiple endpoints? Then per endpoint: **"Do you have a curl comm
      `execute()` + `// TODO` rules. NEVER invent a story silently: made-up validation is
      worse than none.
 
-**NO — guided manual path:** URL → app or external host? → custom headers (paste or "none") →
-method (GET/POST/PUT/DELETE) → request body JSON or "none" (POST/PUT) / query+path params
-(GET/DELETE) → response body → user story.
+**NO — guided manual path** (one question per message here too): URL → app or external host?
+→ custom headers (paste or "none") → method (GET/POST/PUT/DELETE) → request body JSON or
+"none" (POST/PUT) / query+path params (GET/DELETE) → response body → user story.
 
 **Response body rules (both paths):**
 - `"none"` → use case returns `Result<void, FeatureError>`; no ResponseDTO, no `toDomain`.

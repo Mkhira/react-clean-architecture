@@ -1433,6 +1433,6 @@ if (require.main === module) {
     process.exit(main());
 }
 
-const SKILL_VERSION = '1.3.0';
+const SKILL_VERSION = '1.3.1';
 
 module.exports = { featureModel, buildFilePlan, testsDirName, validateSpec, pascal, camel, snakeUpper, SKILL_VERSION };
