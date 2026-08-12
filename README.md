@@ -112,6 +112,14 @@ emitted — the HttpClient auth layer owns them.
 
 ## Version
 
+**1.4.0** — intake redesigned to the owner's confirmed flow:
+- response body is no longer a question: the skill EXECUTES the pasted curl and captures the
+  live response (GET immediately; POST/PUT/DELETE after explicit confirmation); sample-paste /
+  "none" remain only as fallbacks when execution fails
+- user story asked ONCE per run (write or skip) after all curls are in — in multi mode its
+  rules are mapped onto each endpoint's use case
+- multi mode: "next curl, or done?" after every capture; summary table on "done"
+
 **1.3.1**
 - intake protocol hardened (live-run finding): the Step 2 question order is fixed and
   unconditional — "single or multiple endpoints?" first, alone; then the curl; then response

@@ -29,8 +29,8 @@ questions for every choice point below.
 ```
 - [ ] 0. Baseline: node <skill>/scripts/audit.js --baseline
 - [ ] 1. Feature name → new feature or append?  Git tree clean?
-- [ ] 2. Single or multiple? → per endpoint: curl / manual intake → response body → user story
-        (ONE question per message, fixed order — see Step 2)
+- [ ] 2. Single or multiple? → curls one-by-one (auto-EXECUTE for the response; multi: "next
+        or done?") → summary table → ONE user story (skip/write)  [one question per message]
 - [ ] 3. Confirmation tables: headers / request-field provenance / status enum
 - [ ] 4. Write feature-spec.json (scratch dir, NOT the repo)
 - [ ] 5. node <skill>/scripts/generate.js <spec>
@@ -62,13 +62,17 @@ the curl along with your choice". Ask, stop, wait for the answer, then ask the n
 The fixed sequence:
 
 1. Ask ONLY: **"Single or multiple endpoints?"** — nothing else in that message. Wait.
-2. Then, for the current endpoint, ask ONLY: **"Do you have a curl command?"** (paste it, or
-   answer "no" for guided intake). Wait for the paste/answer.
-3. Then the **response body** question (three options below). Wait.
-4. Then the **user story** question (with its skip option). Wait.
-5. Multiple mode: after each endpoint completes, ask for the next curl or "submit".
+2. Ask ONLY for the curl paste (or "no curl" → guided intake). Wait.
+3. **No response-body question** — capture the response by EXECUTING the curl (see
+   "Response capture" below). Not asked, just done.
+4. Multiple mode: ask **"next curl, or done?"** — on "next", loop back to 2 for the next
+   endpoint. Single mode: skip this.
+5. When all curls are in ("done", or the single curl is captured): show the endpoint summary
+   table (user can say "edit #N"), then ask the **user story** question — ONCE for the whole
+   feature, with an explicit **"skip"** option. In multi mode you map the story's rules onto
+   each endpoint's use case; endpoints the story doesn't cover get pass-through + `// TODO`.
 
-**YES — curl path (target: 3 pastes total per endpoint):**
+**YES — curl path (target: ONE paste per endpoint — the curl itself):**
 1. Paste → save to a scratch file → `node <skill>/scripts/parse-curl.js <file>`.
    Detection is loose: `--header`/`-H`/`--data`/`-d`/`--body` + a URL counts — no literal
    `curl` prefix required (Postman exports start with other text).
@@ -84,41 +88,39 @@ The fixed sequence:
      no new env keys, omit `baseUrl.envKey`/`devValue`.
    - Anything else → `hostType: "external"` with a new `EXPO_PUBLIC_<FEATURE>_BASE_URL`.
 3. Numeric/UUID path segments → propose them as path params, user confirms which are dynamic.
-4. Then TWO real questions to the user — each in its OWN message (sequence steps 3–4 above),
-   never answered by you and never merged into one message:
-   - **Response body** — offer three numbered options:
-     1. paste a sample JSON response;
-     2. **let the skill EXECUTE the curl and capture the live response** (preferred when the
-        paste is complete — the real payload beats a hand-typed sample). GETs run after a
-        one-line confirmation; for POST/PUT/DELETE warn that the call will hit the real API
-        and possibly mutate state, and get an explicit yes first. Model the `data` object
-        when the response arrives in the app's `ApiResponse` `{header, data}` envelope.
-        Any token in the paste is used for the call ONLY — it never lands in a file
-        (secret-hygiene enforces this);
-     3. "none" — endpoint returns nothing useful → `Result<void, …>`.
-   - **User story** — ask for it with an explicit **"skip"** option. Skipped → pass-through
-     `execute()` + `// TODO` rules. NEVER invent a story silently: made-up validation is
-     worse than none.
+4. **Response capture — EXECUTE the curl, don't ask.** The live payload beats a hand-typed
+   sample, so run the pasted curl and capture the real response:
+   - **GET**: execute immediately, no question.
+   - **POST/PUT/DELETE**: one-line confirmation first — the call hits the real API and may
+     mutate state; get an explicit yes before running.
+   - Model the `data` object when the response arrives in the app's `ApiResponse`
+     `{header, data}` envelope. Any token in the paste is used for the call ONLY — it never
+     lands in a file (secret-hygiene enforces this).
+   - **Fallback (only if execution fails** — network/auth error, non-JSON, empty body, or the
+     user declined a mutating call): then ask — paste a sample JSON response, or "none"
+     (endpoint returns nothing useful → `Result<void, …>`).
 
 **NO — guided manual path** (one question per message here too): URL → app or external host?
 → custom headers (paste or "none") → method (GET/POST/PUT/DELETE) → request body JSON or
-"none" (POST/PUT) / query+path params (GET/DELETE) → response body → user story.
+"none" (POST/PUT) / query+path params (GET/DELETE) → response body (no curl to execute, so
+ASK: paste a sample or "none") → back into the fixed sequence (next-curl loop / user story).
 
-**Response body rules (both paths):**
+**Response shape rules (both paths):**
 - `"none"` → use case returns `Result<void, FeatureError>`; no ResponseDTO, no `toDomain`.
 - Top-level array `[...]` supported (array DTO + entity list).
 - `null` values / empty `[]` → ask the user the type; unanswered → `unknown` + audit warning.
 - Non-JSON / multipart / uploads → reject in v1 (message above).
 - Endpoint path already present in ANY other feature (audit greps too) → warn, continue/cancel.
 
-**User story:** always asked, skippable. Drives use-case name, `execute()` validation, error
-codes; kept as a doc comment on the use case. Skipped → pass-through + `// TODO`. Arabic
-strings in the story flow into `ar.json`.
+**User story:** asked ONCE per run, after all curls are captured (sequence step 5) — options:
+write it, or **skip**. Drives use-case names, `execute()` validation, error codes; kept as a
+doc comment on the use case(s). Skipped → pass-through + `// TODO`. NEVER invent a story
+silently: made-up validation is worse than none. Arabic strings in the story flow into
+`ar.json`.
 
-**Multi mode:** after finishing EVERY endpoint's intake, explicitly ask: **"paste the next
-curl/endpoint, or submit?"** — even when the user initially said "single endpoint", offer one
-"anything else to add?" before generating. On submit show a summary table of ALL endpoints
-first; user can say "edit #N" before generation.
+**Multi mode:** after each curl is captured, ask **"next curl, or done?"**. On "done" show the
+summary table of ALL endpoints (user can say "edit #N"), then the single user story question,
+then the Step 3 confirmation tables.
 
 **PUT/DELETE:** `IHttpClient` has them commented out. If the spec needs one, YOU edit
 `src/core/http/IHttpClient.ts` + `HttpClientService.ts` by hand, mirroring the existing
