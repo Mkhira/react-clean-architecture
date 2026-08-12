@@ -70,7 +70,10 @@ Ask: single or multiple endpoints? Then per endpoint: **"Do you have a curl comm
      no new env keys, omit `baseUrl.envKey`/`devValue`.
    - Anything else → `hostType: "external"` with a new `EXPO_PUBLIC_<FEATURE>_BASE_URL`.
 3. Numeric/UUID path segments → propose them as path params, user confirms which are dynamic.
-4. Then ask only: **response body** → **user story**.
+4. Then ask only: **response body** → **user story**. BOTH are real questions to the user —
+   never skip them, never invent a story, and NEVER execute the pasted curl yourself to
+   capture the response (it may carry a live auth token). If running the request would help,
+   ask permission first and only for read-only GETs against a test host.
 
 **NO — guided manual path:** URL → app or external host? → custom headers (paste or "none") →
 method (GET/POST/PUT/DELETE) → request body JSON or "none" (POST/PUT) / query+path params
