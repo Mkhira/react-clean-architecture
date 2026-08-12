@@ -31,7 +31,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { featureModel, buildFilePlan, pascal, SKILL_VERSION } = require('./generate.js');
+const { featureModel, buildFilePlan, testsDirName, pascal, SKILL_VERSION } = require('./generate.js');
 
 const HELP = `migrate-feature.js — regenerate a feature's machine-owned files with the current templates.
 
@@ -105,7 +105,7 @@ function main() {
 
     const fromVersion = spec.skillVersion ?? '1.0.0 (pre-stamping)';
     const f = featureModel(spec);
-    const { files, perEndpoint } = buildFilePlan(spec, f);
+    const { files, perEndpoint } = buildFilePlan(spec, f, testsDirName(repo, feature));
     const planned = new Map([...files, ...perEndpoint]);
 
     const report = {

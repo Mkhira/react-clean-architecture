@@ -12,7 +12,7 @@ src/features/<Feature>/
 ├── data/         dtos · endpoints · mappers · service · repository
 ├── domain/       entities · errors · IRepositories · IServices · use cases
 ├── presentation/ starter screen + controller · styles · translations (en/ar)
-└── __tests__/    mapper + use-case Jest suites
+└── test/         mapper + use-case Jest suites
 ```
 
 plus tsyringe DI registration (`tokens.ts` + `container.ts`), i18next registration
@@ -111,6 +111,19 @@ emitted — the HttpClient auth layer owns them.
 - Removing/renaming/migrating **pre-skill** features (no persisted spec — manual)
 
 ## Version
+
+**1.3.0**
+- generated tests live in `test/` (was `__tests__/`) — pre-1.3.0 features keep their existing
+  `__tests__/` dir automatically (append/audit/migrate detect it)
+- the `@shared/components` barrel mock is emitted in BOTH test templates unconditionally —
+  shared utils (dateFormat, regex, digitNormalization…) pull the barrel and crash jest otherwise
+- SKILL.md final report notes the expo-router typed-routes caveat (`as Href` until the next
+  `expo start`)
+
+**1.2.1**
+- app-host transport follows the HttpClient mapper-config convention (live-test finding):
+  `{ mapper: <Action>Mapper.toDomain }` with the domain type as the generic; use-case catch
+  surfaces the API envelope's status description; controller logs errors visibly
 
 **1.2.0**
 - feature lifecycle: `remove-feature.js` (full unwire), `rename-feature.js`

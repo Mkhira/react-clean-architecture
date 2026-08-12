@@ -22,7 +22,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { featureModel, buildFilePlan, SKILL_VERSION } = require('./generate.js');
+const { featureModel, buildFilePlan, testsDirName, SKILL_VERSION } = require('./generate.js');
 
 const HELP = `audit.js — audit a generated feature (structure, DI, env, tsc diff, jest).
 
@@ -60,7 +60,7 @@ function tscErrors(repo) {
 // ------------------------------------------------------------------ checks ----
 
 function checkStructure(repo, spec, f) {
-    const { files, perEndpoint } = buildFilePlan(spec, f);
+    const { files, perEndpoint } = buildFilePlan(spec, f, testsDirName(repo, f.feature));
     const expected = spec.mode === 'append' ? [...perEndpoint.keys()] : [...files.keys(), ...perEndpoint.keys()];
     const missing = expected.filter((relative) => !fs.existsSync(path.join(repo, relative)));
     if (missing.length) fail('structure', `missing: ${missing.join(', ')}`);

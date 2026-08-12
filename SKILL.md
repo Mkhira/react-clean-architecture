@@ -143,7 +143,7 @@ everything you hand-write. (`cleanString` stays mapper-local; that is the repo c
    manifest; `needsManual` entries (append mode) are YOUR hand-edit list.
 3. Hand-write ONLY: the use-case `execute()` rules from the story, the mapper's
    `TODO(claude): status derivation` block (if statusEnum), the rule tests marked
-   `TODO(claude)` in `__tests__/`, and Arabic translation values. Match the generated code
+   `TODO(claude)` in `test/`, and Arabic translation values. Match the generated code
    style; keep the sample-derived test inputs valid under your new rules. New error codes go
    into the `<FEATURE>_ERROR_CODE_VALUES` array in the errors file — the union type and the
    runtime guard both derive from it.
@@ -163,7 +163,9 @@ everything you hand-write. (`cleanString` stays mapper-local; that is the repo c
 Report: files created; TOKENS added; env keys still to fill (staging/preprod/production);
 session-value TODOs; core edits made (put/delete, first-run anchors); and the navigation
 reminder — **expo-router**: "to expose the screen, add a route file under `app/` that renders
-`<featureCamel>Screen`" (the skill never touches navigators/routes).
+`<featureCamel>Screen`" (the skill never touches navigators/routes). New route paths are not
+in the typed-routes union until the next `expo start` regenerates it — use an `as Href` cast
+temporarily and note it in the report.
 
 ## Feature lifecycle (remove / rename / migrate)
 

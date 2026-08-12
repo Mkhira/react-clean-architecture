@@ -21,14 +21,14 @@
     "src/features/ProductVerification/data/mappers/VerifyProductCodeMapper.ts",
     "src/features/ProductVerification/domain/entities/VerifyProductCodeResult.ts",
     "src/features/ProductVerification/domain/usecases/VerifyProductCodeUseCase.ts",
-    "src/features/ProductVerification/__tests__/VerifyProductCodeMapper.test.ts",
-    "src/features/ProductVerification/__tests__/VerifyProductCodeUseCase.test.ts",
+    "src/features/ProductVerification/test/VerifyProductCodeMapper.test.ts",
+    "src/features/ProductVerification/test/VerifyProductCodeUseCase.test.ts",
     "src/features/ProductVerification/data/dtos/GetScanHistoryDTO.ts",
     "src/features/ProductVerification/data/mappers/GetScanHistoryMapper.ts",
     "src/features/ProductVerification/domain/entities/GetScanHistoryResult.ts",
     "src/features/ProductVerification/domain/usecases/GetScanHistoryUseCase.ts",
-    "src/features/ProductVerification/__tests__/GetScanHistoryMapper.test.ts",
-    "src/features/ProductVerification/__tests__/GetScanHistoryUseCase.test.ts"
+    "src/features/ProductVerification/test/GetScanHistoryMapper.test.ts",
+    "src/features/ProductVerification/test/GetScanHistoryUseCase.test.ts"
   ],
   "skipped": [],
   "patched": [],

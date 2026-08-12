@@ -55,7 +55,7 @@ test('create mode: full tree, anchors, and manifest; never overwrites on re-run'
         `${base}/data/endpoints/endpoints.ts`,
         `${base}/data/services/OrderTrackingService.ts`,
         `${base}/domain/usecases/TrackOrderUseCase.ts`,
-        `${base}/__tests__/TrackOrderMapper.test.ts`,
+        `${base}/test/TrackOrderMapper.test.ts`,
         `${base}/presentation/translations/ar.json`,
         `${base}/presentation/components/.gitkeep`,
     ]) {

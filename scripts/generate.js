@@ -975,11 +975,10 @@ ${dtoAsserts.join('\n')}
     const imports = [`import { ${e.mapper} } from '../data/mappers/${e.mapper}';`];
     if (needsDateImport) imports.push(`import { formatDateTimeDateMonthYear } from '@shared/utils/dateFormat';`);
 
-    // dateFormat.ts imports the @shared/components barrel, which drags
-    // native-only modules into jest — the date helpers under test never touch it
-    const barrelMock = (e.dateFields ?? []).length
-        ? `\njest.mock('@shared/components', () => ({}));\n`
-        : '';
+    // several shared utils (dateFormat, regex, …) import the @shared/components
+    // barrel, which drags native-only modules into jest — mock it always; the
+    // helpers under test never touch it (proven safe in the live AddIban run)
+    const barrelMock = `\njest.mock('@shared/components', () => ({}));\n`;
 
     const sampleConst = e.hasResponse
         ? `\nconst SAMPLE = ${JSON.stringify(e.responseSample, null, 4)} as const;\n`
@@ -1019,6 +1018,11 @@ import { ${f.errorFactory} } from '../domain/errors/${f.errorType}';
 import { Result } from '@shared/types/Result';
 import type { ${f.repositoryInterface} } from '../domain/IRepositories/${f.repositoryInterface}';
 
+// several shared utils import the @shared/components barrel, which drags
+// native-only modules into jest — mock it so hand-written rules can reuse
+// shared utils (digitNormalization, regex, …) without breaking the suite
+jest.mock('@shared/components', () => ({}));
+
 const makeRepository = (overrides: Partial<${f.repositoryInterface}> = {}): ${f.repositoryInterface} =>
     ({
         ${e.actionCamel}: jest.fn().mockResolvedValue(${fakeResult}),
@@ -1053,7 +1057,15 @@ ${rulesTodo}});
 
 // -------------------------------------------------------------- assembly ----
 
-function buildFilePlan(spec, f) {
+/**
+ * New features get a `test/` dir; features generated before v1.3.0 keep their
+ * existing `__tests__/` (jest matches *.test.ts by filename either way).
+ */
+function testsDirName(repo, feature) {
+    return fs.existsSync(path.join(repo, 'src', 'features', feature, '__tests__')) ? '__tests__' : 'test';
+}
+
+function buildFilePlan(spec, f, testsDir = 'test') {
     const base = path.join('src', 'features', f.feature);
     const files = new Map();
 
@@ -1088,9 +1100,9 @@ function buildFilePlan(spec, f) {
         }
         perEndpoint.set(path.join(base, 'domain', 'usecases', `${e.useCase}.ts`), useCaseFile(f, e));
         if (e.hasResponse || e.hasBody) {
-            perEndpoint.set(path.join(base, '__tests__', `${e.mapper}.test.ts`), mapperTestFile(f, e));
+            perEndpoint.set(path.join(base, testsDir, `${e.mapper}.test.ts`), mapperTestFile(f, e));
         }
-        perEndpoint.set(path.join(base, '__tests__', `${e.useCase}.test.ts`), useCaseTestFile(f, e));
+        perEndpoint.set(path.join(base, testsDir, `${e.useCase}.test.ts`), useCaseTestFile(f, e));
     }
 
     return { base, files, perEndpoint };
@@ -1369,7 +1381,7 @@ function main() {
     }
 
     const f = featureModel(spec);
-    const { files, perEndpoint } = buildFilePlan(spec, f);
+    const { files, perEndpoint } = buildFilePlan(spec, f, testsDirName(repo, f.feature));
     const manifest = { feature: f.feature, mode: spec.mode, created: [], skipped: [], patched: [], needsClaude: [], needsManual: [] };
 
     // Append requires a skill-shaped feature. A pre-skill feature (different
@@ -1421,6 +1433,6 @@ if (require.main === module) {
     process.exit(main());
 }
 
-const SKILL_VERSION = '1.2.1';
+const SKILL_VERSION = '1.3.0';
 
-module.exports = { featureModel, buildFilePlan, validateSpec, pascal, camel, snakeUpper, SKILL_VERSION };
+module.exports = { featureModel, buildFilePlan, testsDirName, validateSpec, pascal, camel, snakeUpper, SKILL_VERSION };
