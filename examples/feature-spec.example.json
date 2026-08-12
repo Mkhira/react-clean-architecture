@@ -1,0 +1,108 @@
+{
+  "feature": "ProductVerification",
+  "mode": "create",
+  "appHost": "https://api.example-app.test/mobile/",
+  "endpoints": [
+    {
+      "action": "verifyProductCode",
+      "method": "POST",
+      "path": "/v2/scancode/savedetails",
+      "pathParams": [],
+      "queryParams": [],
+      "hostType": "external",
+      "baseUrl": {
+        "envKey": "EXPO_PUBLIC_PRODUCT_VERIFICATION_BASE_URL",
+        "configField": "productVerificationBaseUrl",
+        "devValue": "https://api.example-dts.test/ECA"
+      },
+      "headers": [
+        { "name": "Content-Type", "value": "application/json", "source": "literal" },
+        { "name": "Accept", "value": "application/json", "source": "literal" },
+        {
+          "name": "client_id",
+          "value": "demo-client-id",
+          "source": "env",
+          "envKey": "EXPO_PUBLIC_PRODUCT_VERIFICATION_CLIENT_ID",
+          "configField": "productVerificationClientId"
+        },
+        {
+          "name": "client_secret",
+          "value": "demo-client-secret",
+          "source": "env",
+          "envKey": "EXPO_PUBLIC_PRODUCT_VERIFICATION_CLIENT_SECRET",
+          "configField": "productVerificationClientSecret"
+        },
+        { "name": "Authorization", "value": "Bearer <session>", "source": "session" }
+      ],
+      "requestSample": {
+        "ScanCode": "1234567890123456",
+        "ScanCodeType": "",
+        "ScanDateTime": "2025-01-01T00:00:00Z",
+        "ScanDeviceId": "device-1",
+        "ScanDeviceName": "Test Phone",
+        "ScanDeviceOS": "iOS",
+        "ScanDeviceOSVersion": "17.0",
+        "ScanDeviceLanguage": "English",
+        "ScanCustomerId": 1
+      },
+      "requestFieldSources": {
+        "ScanCode": "input",
+        "ScanCodeType": { "constant": "" },
+        "ScanDateTime": "timestamp",
+        "ScanDeviceId": "device",
+        "ScanDeviceName": "device",
+        "ScanDeviceOS": "device",
+        "ScanDeviceOSVersion": "device",
+        "ScanDeviceLanguage": "device",
+        "ScanCustomerId": "session"
+      },
+      "responseSample": {
+        "IsValid": true,
+        "IsPackCode": false,
+        "IsDTSCode": true,
+        "pack": {
+          "ProductDescription": "Sample product",
+          "DateOfManufacture": "2025-02-13T11:11:40.0110000Z",
+          "OrganisationName": "Example Org",
+          "CountryOfManufacture": "SA",
+          "CustomsAuthority": null,
+          "CustomersClearanceDate": null
+        }
+      },
+      "typeOverrides": {
+        "pack": "nullable",
+        "pack.CustomsAuthority": "string|null",
+        "pack.CustomersClearanceDate": "date|null"
+      },
+      "dateFields": ["pack.DateOfManufacture", "pack.CustomersClearanceDate"],
+      "statusEnum": { "field": "status", "values": ["valid", "invalid", "notFound"] },
+      "userStory": "As a consumer I scan a product tax-stamp QR code so I can check the product is genuine. The code must be exactly 16 characters after trimming; otherwise show a validation error without calling the API.",
+      "rules": ["code required, exactly 16 characters after trimming"]
+    },
+    {
+      "action": "getScanHistory",
+      "method": "GET",
+      "path": "/v1/scans/history",
+      "pathParams": [],
+      "queryParams": [{ "name": "from", "type": "string" }],
+      "hostType": "app",
+      "baseUrl": null,
+      "headers": [],
+      "requestSample": null,
+      "requestFieldSources": {},
+      "responseSample": [
+        {
+          "ScanId": 7,
+          "ScanCode": "1234567890123456",
+          "ScannedAt": "2025-01-01T10:00:00Z",
+          "WasValid": true
+        }
+      ],
+      "typeOverrides": {},
+      "dateFields": ["ScannedAt"],
+      "statusEnum": null,
+      "userStory": null,
+      "rules": []
+    }
+  ]
+}
