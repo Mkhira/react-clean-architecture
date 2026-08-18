@@ -3,8 +3,10 @@
 #
 #   ./install.sh claude                      # Claude Code, user-wide (~/.claude/skills)
 #   ./install.sh claude --project <dir>      # Claude Code, one project (.claude/skills)
-#   ./install.sh cursor --project <dir>      # Cursor (.cursor/skills + .cursor/rules)
-#   ./install.sh codex  --project <dir>      # Codex CLI (.agent-skills + AGENTS.md)
+#   ./install.sh cursor                      # Cursor, user-wide (~/.cursor/skills)
+#   ./install.sh cursor --project <dir>      # Cursor, one project (.cursor/skills + rule)
+#   ./install.sh codex                       # Codex CLI, user-wide (~/.codex/skills + ~/.codex/AGENTS.md)
+#   ./install.sh codex  --project <dir>      # Codex CLI, one project (.agent-skills + AGENTS.md)
 #   ./install.sh agents --project <dir>      # any AGENTS.md-compatible agent (same as codex)
 #
 # Add --copy to copy instead of symlink (Claude target only; others always copy).
@@ -15,7 +17,11 @@ SKILL_NAME="react-clean-architecture"
 # pwd -P: resolve symlinks — the skill dir is often a symlink (e.g. from
 # ~/.claude/skills). Copying a symlink source would copy the LINK, and any
 # later cleanup through it would mutate the real checkout.
-SRC="$(cd "$(dirname "$0")" && pwd -P)"
+SRC="$(cd "$(dirname "$0")/skills/$SKILL_NAME" && pwd -P)"
+if [ ! -f "$SRC/SKILL.md" ]; then
+  echo "error: $SRC/SKILL.md not found — run install.sh from the repo root" >&2
+  exit 1
+fi
 
 TARGET="${1:-}"
 PROJECT=""
@@ -107,6 +113,11 @@ case "$TARGET" in
     ;;
 
   cursor)
+    if [ -z "$PROJECT" ]; then
+      install_copy "$HOME/.cursor/skills/$SKILL_NAME"
+      echo "done. Cursor discovers user-wide skills in ~/.cursor/skills (Agent Skills format)."
+      exit 0
+    fi
     need_project
     DEST="$PROJECT/.cursor/skills/$SKILL_NAME"
     install_copy "$DEST"
@@ -128,6 +139,12 @@ EOF
     ;;
 
   codex|agents)
+    if [ -z "$PROJECT" ]; then
+      install_copy "$HOME/.codex/skills/$SKILL_NAME"
+      write_agents_block "$HOME/.codex/AGENTS.md" "$HOME/.codex/skills/$SKILL_NAME"
+      echo "done. Codex CLI reads ~/.codex/AGENTS.md globally and will route to the skill."
+      exit 0
+    fi
     need_project
     DEST="$PROJECT/.agent-skills/$SKILL_NAME"
     install_copy "$DEST"

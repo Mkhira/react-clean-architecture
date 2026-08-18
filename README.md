@@ -52,7 +52,7 @@ flowchart LR
 
 ### The design lane (full / design modes)
 
-Screens are built by the agent from Figma links following strict rules ([DESIGN.md](DESIGN.md)) — theme tokens only, shared-component reuse gate, Arabic-first RTL — then **verified on the iOS simulator** in three passes before sign-off.
+Screens are built by the agent from Figma links following strict rules ([DESIGN.md](skills/react-clean-architecture/DESIGN.md)) — theme tokens only, shared-component reuse gate, Arabic-first RTL — then **verified on the iOS simulator** in three passes before sign-off.
 
 ```mermaid
 flowchart LR
@@ -89,24 +89,46 @@ flowchart TB
 
 ## Install
 
-Clone, then run the installer for your tool:
+### Universal (any agent, user-wide) — recommended
+
+```bash
+npx skills@latest add Mkhira/react-clean-architecture
+```
+
+Pick your agent when prompted (Claude Code, Cursor, Windsurf, Codex, …) — it installs into the right place automatically. The skill lives at [`skills/react-clean-architecture/`](skills/react-clean-architecture/) in the standard Agent-Skills layout.
+
+### Claude Code — native plugin
+
+```
+/plugin marketplace add Mkhira/react-clean-architecture
+/plugin install react-clean-architecture@react-clean-architecture
+```
+
+### install.sh (clone first)
 
 ```bash
 git clone https://github.com/Mkhira/react-clean-architecture.git
 cd react-clean-architecture
 ```
 
-| Tool | Command | What it does |
+| Tool | User-wide (main skill) | One project |
 |---|---|---|
-| **Claude Code** (user-wide) | `./install.sh claude` | symlink into `~/.claude/skills/` |
-| **Claude Code** (one project) | `./install.sh claude --project /path/to/app` | symlink into `<app>/.claude/skills/` |
-| **Cursor** | `./install.sh cursor --project /path/to/app` | copies the skill into `<app>/.cursor/skills/` + adds a `.cursor/rules/*.mdc` rule that routes feature-scaffolding requests to `SKILL.md` |
-| **Codex CLI** | `./install.sh codex --project /path/to/app` | copies the skill into `<app>/.agent-skills/` + appends a routed section to the project's `AGENTS.md` |
-| Any `AGENTS.md` agent | `./install.sh agents --project /path/to/app` | same as codex — the `AGENTS.md` convention is tool-agnostic |
+| **Claude Code** | `./install.sh claude` → `~/.claude/skills/` | `./install.sh claude --project <app>` |
+| **Cursor** | `./install.sh cursor` → `~/.cursor/skills/` | `./install.sh cursor --project <app>` (+ routing rule in `.cursor/rules/`) |
+| **Codex CLI** | `./install.sh codex` → `~/.codex/skills/` + `~/.codex/AGENTS.md` | `./install.sh codex --project <app>` (+ `AGENTS.md` block) |
+| Any `AGENTS.md` agent | — | `./install.sh agents --project <app>` |
 
-Re-running is safe: symlinks are refreshed, copies are replaced, and the `AGENTS.md` block is updated between markers instead of duplicated.
+Re-running is safe: symlinks are refreshed, copies are replaced, and `AGENTS.md` blocks are updated between markers instead of duplicated.
 
-> **Manual install** is just as valid: put this folder wherever your tool discovers skills and make sure the agent reads [SKILL.md](SKILL.md) when the user asks to scaffold a feature. `SKILL.md` carries standard Agent-Skills frontmatter (`name`, `description`) so any compatible runtime can index it.
+### Manual
+
+Copy `skills/react-clean-architecture/` wherever your tool discovers skills, e.g.:
+
+```bash
+cp -R skills/react-clean-architecture ~/.claude/skills/
+```
+
+`SKILL.md` carries standard Agent-Skills frontmatter (`name`, `description`), so any compatible runtime indexes it automatically.
 
 ### Usage
 
@@ -118,7 +140,7 @@ or for screens only:
 
 > `/react-clean-architecture` I need to append on src/features/TaxStampValidation — design mode only
 
-The agent walks the checklist in [SKILL.md](SKILL.md): intake → confirmation tables → generate → register → audit → (design lane) → final report. Appending an endpoint or a screen to a feature the skill built earlier is automatic — the persisted spec provides full prior context, no re-asking.
+The agent walks the checklist in [SKILL.md](skills/react-clean-architecture/SKILL.md): intake → confirmation tables → generate → register → audit → (design lane) → final report. Appending an endpoint or a screen to a feature the skill built earlier is automatic — the persisted spec provides full prior context, no re-asking.
 
 ---
 
@@ -126,15 +148,15 @@ The agent walks the checklist in [SKILL.md](SKILL.md): intake → confirmation t
 
 | Doc | Contents |
 |---|---|
-| [SKILL.md](SKILL.md) | the agent's entry point — full workflow, progress checklist, intake protocol, append mode |
-| [DESIGN.md](DESIGN.md) | design lane: Figma → screens → simulator verification loop, RTL ground rules, navigation registration |
-| [SPEC_FORMAT.md](SPEC_FORMAT.md) | `feature-spec.json` schema + collision rules |
-| [AUDIT.md](AUDIT.md) | every audit check and how to fix each failure |
-| [COMPONENTS.md](COMPONENTS.md) | shared-components dictionary (props, variants, gotchas) used by the reuse gate |
-| [TOKEN_MAP.md](TOKEN_MAP.md) | Figma px/hex/variables → theme token mapping |
+| [SKILL.md](skills/react-clean-architecture/SKILL.md) | the agent's entry point — full workflow, progress checklist, intake protocol, append mode |
+| [DESIGN.md](skills/react-clean-architecture/DESIGN.md) | design lane: Figma → screens → simulator verification loop, RTL ground rules, navigation registration |
+| [SPEC_FORMAT.md](skills/react-clean-architecture/SPEC_FORMAT.md) | `feature-spec.json` schema + collision rules |
+| [AUDIT.md](skills/react-clean-architecture/AUDIT.md) | every audit check and how to fix each failure |
+| [COMPONENTS.md](skills/react-clean-architecture/COMPONENTS.md) | shared-components dictionary (props, variants, gotchas) used by the reuse gate |
+| [TOKEN_MAP.md](skills/react-clean-architecture/TOKEN_MAP.md) | Figma px/hex/variables → theme token mapping |
 | [CHANGELOG.md](CHANGELOG.md) | version history |
-| [examples/](examples/) | filled spec + full expected output tree |
-| [evals/](evals/) | end-to-end eval scenarios against a real repo copy |
+| [examples/](skills/react-clean-architecture/examples/) | filled spec + full expected output tree |
+| [evals/](skills/react-clean-architecture/evals/) | end-to-end eval scenarios against a real repo copy |
 
 ## Scripts reference
 
@@ -150,14 +172,14 @@ The agent walks the checklist in [SKILL.md](SKILL.md): intake → confirmation t
 | `scripts/rename-feature.js` | rename across code/DI/i18n/config/env via derived identifiers only |
 | `scripts/migrate-feature.js` | upgrade machine-owned files to current templates; hand-written code preserved |
 
-All scripts run on plain Node ≥ 18 (stdlib only) and support `--help`.
+Paths are relative to [`skills/react-clean-architecture/`](skills/react-clean-architecture/). All scripts run on plain Node ≥ 18 (stdlib only) and support `--help`.
 
 ## Testing the skill itself
 
 106 tests on Node's built-in runner — still zero dependencies:
 
 ```bash
-node --test tests/*.test.js
+node --test skills/react-clean-architecture/tests/*.test.js
 ```
 
 Unit suites cover the parsers, generation scenarios (create/append/never-overwrite/anchors), DI wiring idempotency and collision refusal, every audit check driven to PASS and FAIL, lifecycle scripts, plus aggressive/hostile-input suites. The fixture repos in `tests/helpers.js` mirror the real app files, so the scripts' regexes hit realistic targets. `evals/` covers the tsc-diff and jest steps end-to-end.
