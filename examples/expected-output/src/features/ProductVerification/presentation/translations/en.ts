@@ -1,0 +1,7 @@
+export default {
+    title: 'Product Verification',
+    errors: {
+        network: 'Something went wrong. Please try again.',
+        validation: 'Please check your input and try again.',
+    },
+};

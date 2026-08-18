@@ -29,10 +29,32 @@ test('first run plants every anchor and wires tokens/registry/container/i18n', (
     assert.match(container, /new OrderTrackingService\(\n\s+dependencyContainer\.resolve<IConfigService>\(TOKENS\.ConfigService\),\n\s+\),/);
     assert.ok(!container.includes('resolve<IHttpClient>(TOKENS.HttpClient),\n                dependencyContainer.resolve<IConfigService>') || true);
 
-    const i18n = read(repo, 'src/core/localization/i18n.ts');
-    assert.match(i18n, /import orderTrackingEn from '@features\/OrderTracking\/presentation\/translations\/en\.json';/);
-    assert.match(i18n, /  orderTracking: \{ en: orderTrackingEn, ar: orderTrackingAr \},/);
-    assert.ok(i18n.indexOf('orderTracking: {') < i18n.indexOf('} as const;'));
+    const merger = read(repo, 'src/core/localization/merger.ts');
+    assert.match(merger, /import orderTracking from '@features\/OrderTracking\/presentation\/translations';/);
+    assert.match(merger, /^    orderTracking,$/m);
+    assert.ok(merger.indexOf('    orderTracking,') < merger.indexOf('} as const;'));
+
+    // POST-only spec: no react-query keys are added (queries cache GETs only)
+    assert.ok(!read(repo, 'src/data/services/keys.ts').includes('ORDER_TRACKING'));
+});
+
+test('GET endpoint: central react-query key inserted with the anchor planted', () => {
+    const spec = baseSpec();
+    spec.endpoints[0] = {
+        ...spec.endpoints[0],
+        action: 'listOrders',
+        method: 'GET',
+        path: '/v1/orders',
+        requestSample: null,
+        requestFieldSources: {},
+        cache: '6-hours',
+    };
+    const { repo } = registeredFixture(spec);
+    const keys = read(repo, 'src/data/services/keys.ts');
+    assert.match(keys, /\/\/ <create-feature:query-keys>/);
+    assert.match(keys, /^    ORDER_TRACKING_LIST_ORDERS: 'order-tracking-list-orders',$/m);
+    // untouched existing keys stay
+    assert.match(keys, /INTEGRATED_TARIFF_SECTIONS: 'integrated-tariff-sections',/);
 });
 
 test('external-only service registration resolves ONLY ConfigService (no dead httpClient dep)', () => {
@@ -63,13 +85,13 @@ test('env wiring: real values in .env/.env.development only; placeholders elsewh
 
 test('second run is fully idempotent: no duplicate lines, everything reported as existing', () => {
     const { repo, specPath } = registeredFixture();
-    const snapshot = ['src/core/di/tokens.ts', 'src/core/di/container.ts', 'src/core/localization/i18n.ts', '.env.development']
+    const snapshot = ['src/core/di/tokens.ts', 'src/core/di/container.ts', 'src/core/localization/merger.ts', 'src/data/services/keys.ts', '.env.development']
         .map((file) => read(repo, file));
     const rerun = JSON.parse(runScript('register-di.js', [specPath, '--repo', repo]).stdout);
     assert.equal(rerun.inserted.length, 0);
     assert.equal(rerun.planted.length, 0);
     assert.ok(rerun.skippedExisting.length > 0);
-    const after = ['src/core/di/tokens.ts', 'src/core/di/container.ts', 'src/core/localization/i18n.ts', '.env.development']
+    const after = ['src/core/di/tokens.ts', 'src/core/di/container.ts', 'src/core/localization/merger.ts', 'src/data/services/keys.ts', '.env.development']
         .map((file) => read(repo, file));
     assert.deepEqual(after, snapshot);
 });

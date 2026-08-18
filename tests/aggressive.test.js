@@ -127,24 +127,22 @@ test('register-di refuses to run before generate (no dangling DI entries)', () =
     assert.ok(!read(repo, 'src/core/di/tokens.ts').includes('OrderTracking'), 'tokens.ts must be untouched');
 });
 
-test('i18n.ts with NO feature imports yet: anchors still planted after the last import', () => {
+test('merger.ts with NO feature imports yet: anchors still planted after the last import', () => {
     const repo = makeFixtureRepo();
-    write(repo, 'src/core/localization/i18n.ts', `import i18n from 'i18next';
-import en from './translations/en.json';
-import ar from './translations/ar.json';
+    write(repo, 'src/core/localization/merger.ts', `import { AppLanguage } from './i18n';
 
 const featureTranslations = {
 } as const;
 
-export default i18n;
+export const featureTranslationsFor = (language: AppLanguage) => featureTranslations;
 `);
     const specPath = writeSpec(makeTmpDir('s'), baseSpec());
     runScript('generate.js', [specPath, '--repo', repo]);
     const result = runScript('register-di.js', [specPath, '--repo', repo]);
     assert.equal(result.status, 0);
-    const i18n = read(repo, 'src/core/localization/i18n.ts');
-    assert.match(i18n, /import orderTrackingEn/);
-    assert.match(i18n, /  orderTracking: \{ en: orderTrackingEn, ar: orderTrackingAr \},/);
+    const merger = read(repo, 'src/core/localization/merger.ts');
+    assert.match(merger, /import orderTracking from '@features\/OrderTracking\/presentation\/translations';/);
+    assert.match(merger, /^    orderTracking,$/m);
 });
 
 test('unrecognizably-shaped ConfigService degrades to NEEDS_MANUAL, not corruption', () => {
@@ -209,4 +207,156 @@ test('rollback without a manifest exits with a clear error', () => {
     const result = runScript('rollback.js', ['--repo', makeTmpDir('empty')]);
     assert.equal(result.status, 1);
     assert.match(result.stderr, /nothing to roll back/);
+});
+
+// ----------------------------------------- design-lane audit regressions ----
+
+function getEndpoint(overrides = {}) {
+    const spec = baseSpec();
+    spec.endpoints[0] = {
+        ...spec.endpoints[0],
+        action: 'listOrders', method: 'GET', path: '/v1/orders',
+        requestSample: null, requestFieldSources: {},
+        hostType: 'app', baseUrl: null, headers: [],
+        ...overrides,
+    };
+    return spec;
+}
+
+test('spec with empty endpoints array is refused with a design-only pointer', () => {
+    const repo = makeFixtureRepo();
+    const spec = baseSpec();
+    spec.endpoints = [];
+    const result = runScript('generate.js', [writeSpec(makeTmpDir('s'), spec), '--repo', repo]);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /endpoints must be a non-empty array/);
+});
+
+test('figma URL without protocol still rejected in the design block', () => {
+    const repo = makeFixtureRepo();
+    const spec = getEndpoint();
+    spec.design = { screens: [{ name: 'Home', link: 'figma.com/design/abc?node-id=1-2&token=SECRET' }] };
+    const result = runScript('generate.js', [writeSpec(makeTmpDir('s'), spec), '--repo', repo]);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /not figma\.com URLs/);
+});
+
+test('remove: only THIS feature\'s exact query keys are deleted, prefix-sharing keys survive', () => {
+    const repo = makeFixtureRepo();
+    const spec = getEndpoint(); // feature OrderTracking, key ORDER_TRACKING_LIST_ORDERS
+    spec.feature = 'Order';     // → key ORDER_LIST_ORDERS
+    const specPath = writeSpec(makeTmpDir('s'), spec);
+    runScript('generate.js', [specPath, '--repo', repo]);
+    runScript('register-di.js', [specPath, '--repo', repo]);
+    // hand-written app key sharing the ORDER_ prefix — must survive removal
+    let keys = read(repo, 'src/data/services/keys.ts');
+    keys = keys.replace("BANNERS: 'banners',", "BANNERS: 'banners',\n    ORDER_TRACKING_STATUS: 'order-tracking-status',");
+    fs.writeFileSync(path.join(repo, 'src/data/services/keys.ts'), keys);
+    fs.copyFileSync(specPath, path.join(repo, 'src/features/Order/feature-spec.json'));
+
+    const result = runScript('remove-feature.js', ['Order', '--repo', repo, '--apply']);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    const after = read(repo, 'src/data/services/keys.ts');
+    assert.ok(!after.includes('ORDER_LIST_ORDERS'), 'own key removed');
+    assert.match(after, /ORDER_TRACKING_STATUS: 'order-tracking-status',/, 'prefix-sharing key must survive');
+});
+
+test('rename: queries.ts usage sites AND keys.ts declaration both move to the new key', () => {
+    const repo = makeFixtureRepo();
+    const spec = getEndpoint({ cache: '6-hours' });
+    const specPath = writeSpec(makeTmpDir('s'), spec);
+    runScript('generate.js', [specPath, '--repo', repo]);
+    runScript('register-di.js', [specPath, '--repo', repo]);
+    fs.copyFileSync(specPath, path.join(repo, 'src/features/OrderTracking/feature-spec.json'));
+
+    const result = runScript('rename-feature.js', ['OrderTracking', 'ShipmentTrace', '--repo', repo, '--apply']);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    const keys = read(repo, 'src/data/services/keys.ts');
+    assert.match(keys, /SHIPMENT_TRACE_LIST_ORDERS: 'shipment-trace-list-orders',/);
+    assert.ok(!keys.includes('ORDER_TRACKING_LIST_ORDERS'));
+    const queries = read(repo, 'src/features/ShipmentTrace/presentation/queries.ts');
+    assert.match(queries, /QUERIES_KEYS\.SHIPMENT_TRACE_LIST_ORDERS\]/, 'usage site renamed');
+    assert.ok(!queries.includes('ORDER_TRACKING_LIST_ORDERS'));
+});
+
+test('merger entry insert is anchored: a case-exact suffix entry (reorder) cannot mask order', () => {
+    const repo = makeFixtureRepo();
+    // existing entry "reorder," contains "order," as a substring
+    let merger = read(repo, 'src/core/localization/merger.ts');
+    merger = merger
+        .replace("import account from '@features/account/presentation/translations';",
+            "import account from '@features/account/presentation/translations';\nimport reorder from '@features/reorder/presentation/translations';")
+        .replace('    account,', '    account,\n    reorder,');
+    fs.writeFileSync(path.join(repo, 'src/core/localization/merger.ts'), merger);
+
+    const spec = getEndpoint();
+    spec.feature = 'Order';
+    const specPath = writeSpec(makeTmpDir('s'), spec);
+    runScript('generate.js', [specPath, '--repo', repo]);
+    const result = runScript('register-di.js', [specPath, '--repo', repo]);
+    assert.equal(result.status, 0, result.stderr);
+    const after = read(repo, 'src/core/localization/merger.ts');
+    assert.match(after, /^    order,$/m, 'order entry must be inserted despite reorder substring');
+    assert.match(after, /^    reorder,$/m, 'reorder entry untouched');
+});
+
+test('append GET to a POST-only feature creates queries.ts with the hook + needsClaude note', () => {
+    const repo = makeFixtureRepo();
+    const createPath = writeSpec(makeTmpDir('s'), baseSpec()); // POST-only
+    runScript('generate.js', [createPath, '--repo', repo]);
+    assert.ok(!exists(repo, 'src/features/OrderTracking/presentation/queries.ts'));
+
+    const appendSpec = getEndpoint({ cache: '8-hours' });
+    appendSpec.mode = 'append';
+    const result = runScript('generate.js', [writeSpec(makeTmpDir('s'), appendSpec), '--repo', repo]);
+    const manifest = JSON.parse(result.stdout);
+    assert.ok(manifest.created.includes('src/features/OrderTracking/presentation/queries.ts'));
+    const queries = read(repo, 'src/features/OrderTracking/presentation/queries.ts');
+    assert.match(queries, /export const useListOrdersQuery/);
+    assert.match(queries, /storeDuration: '8-hours'/);
+    assert.match(queries, /\/\/ <create-feature:queries>/);
+    assert.ok(manifest.needsClaude.some((n) => n.includes('use<Action>Query hook')));
+});
+
+test('append GET to a feature that already has queries.ts inserts the hook at the anchor', () => {
+    const repo = makeFixtureRepo();
+    const createPath = writeSpec(makeTmpDir('s'), getEndpoint());
+    runScript('generate.js', [createPath, '--repo', repo]);
+
+    const appendSpec = getEndpoint({ action: 'getOrderDetail', path: '/v1/orders/{id}', pathParams: [{ name: 'id', type: 'string' }] });
+    appendSpec.mode = 'append';
+    const result = runScript('generate.js', [writeSpec(makeTmpDir('s'), appendSpec), '--repo', repo]);
+    const manifest = JSON.parse(result.stdout);
+    assert.ok(manifest.patched.includes('src/features/OrderTracking/presentation/queries.ts'));
+    const queries = read(repo, 'src/features/OrderTracking/presentation/queries.ts');
+    assert.match(queries, /export const useListOrdersQuery/, 'existing hook stays');
+    assert.match(queries, /export const useGetOrderDetailQuery = \(input: GetOrderDetailInput/, 'new hook inserted');
+    assert.match(queries, /import type \{ GetOrderDetailInput \} from '\.\.\/domain\/entities\/GetOrderDetailResult';/, 'input import added');
+    // idempotent re-run
+    const rerun = runScript('generate.js', [writeSpec(makeTmpDir('s'), appendSpec), '--repo', repo]);
+    const queriesAfter = read(repo, 'src/features/OrderTracking/presentation/queries.ts');
+    assert.equal((queriesAfter.match(/useGetOrderDetailQuery/g) || []).length, (queries.match(/useGetOrderDetailQuery/g) || []).length);
+});
+
+test('remove-feature handles a design-only resume spec (no endpoints) without crashing', () => {
+    const repo = makeFixtureRepo();
+    // design-only feature: presentation dir + hand-written resume record + manual merger entry
+    write(repo, 'src/features/GlassFlow/presentation/screens/GlassFlowScreen.tsx', 'export default function GlassFlowScreen() { return null; }\n');
+    write(repo, 'src/features/GlassFlow/feature-spec.json', JSON.stringify({
+        feature: 'GlassFlow', skillVersion: '1.5.0',
+        design: { fileKey: 'abc', screens: [{ name: 'entry', screenNodeId: '1:2', status: 'verified' }] },
+    }, null, 2));
+    let merger = read(repo, 'src/core/localization/merger.ts');
+    merger = merger
+        .replace("import account from '@features/account/presentation/translations';",
+            "import account from '@features/account/presentation/translations';\nimport glassFlow from '@features/GlassFlow/presentation/translations';")
+        .replace('    account,', '    account,\n    glassFlow,');
+    fs.writeFileSync(path.join(repo, 'src/core/localization/merger.ts'), merger);
+
+    const result = runScript('remove-feature.js', ['GlassFlow', '--repo', repo, '--apply']);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.ok(!exists(repo, 'src/features/GlassFlow'));
+    const after = read(repo, 'src/core/localization/merger.ts');
+    assert.ok(!after.includes('glassFlow'), 'merger entry + import removed');
+    assert.match(after, /^    account,$/m, 'unrelated entry stays');
 });

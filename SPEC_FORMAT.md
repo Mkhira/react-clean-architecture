@@ -12,7 +12,8 @@ mode and documentation.
 | `feature` | string | PascalCase. Grep `tokens.ts`/`container.ts` for collisions first |
 | `mode` | `"create"` \| `"append"` | append = feature dir already exists (anchors expected) |
 | `appHost` | string | `EXPO_PUBLIC_API_URL` as read from `.env.development` at spec time |
-| `endpoints` | Endpoint[] | one entry per endpoint |
+| `endpoints` | Endpoint[] | one entry per endpoint (non-empty — design-only records have none and never feed generate.js) |
+| `skillVersion` | string | PERSISTED specs only (never in the generate.js input — audit stamps it). Hand-written design-only records: copy the `SKILL_VERSION` constant from `<skill>/scripts/generate.js` |
 
 ## Endpoint
 
@@ -34,6 +35,7 @@ mode and documentation.
 | `statusEnum` | `{field, values[]}` \| null | emits the union type; the DERIVATION is hand-written (TODO in mapper, audit-enforced) |
 | `userStory` | string \| null | kept as doc comment; drives rules + Arabic strings |
 | `rules` | string[] | short rule statements → TODO bullets in the use case + tests |
+| `cache` | duration \| null | GET only — response cache via `useApiQuery` `storeDuration`: `"6-hours"` \| `"8-hours"` \| `"12-hours"` \| `"24-hours"` \| `"2-days"` \| `"1-week"`; omit/null = no persistent cache. Asked per endpoint during intake |
 
 ### `baseUrl` (external endpoints)
 
@@ -79,6 +81,26 @@ Dot-paths from the response root. Values: `"nullable"` (inferred → `| null`),
 `"string|null"`, `"date|null"` (string in the DTO — formatting is the mapper's job),
 `"string[]"`, or any verbatim TS type. Unanswered `null`/`[]` fields become `unknown` /
 `unknown[]` plus an audit warning.
+
+## `design` (top level, optional — design lane)
+
+Written by the design lane (see [DESIGN.md](DESIGN.md)); ignored by generate.js's file plan
+and persisted verbatim by audit.js, which makes design/append runs resumable. **Design-only
+features** (no endpoints — generate.js/audit.js never run) persist a hand-written
+`feature-spec.json` containing only `{ "feature", "skillVersion", "design" }`; that file is a
+resume record for design-append, never a generate.js input.
+
+| Field | Type | Notes |
+|---|---|---|
+| `fileKey` | string | Figma file key (the `:fileKey` segment of the design URL) |
+| `screens` | Screen[] | ordered — the generation order the user gave |
+| `serviceCard` | object \| null | the service-card values (Step 2c defaults unless the user edited them — the questionnaire is retired): `{ cost, serviceTypes, userTypes, fees, processingTimeMinutes, requiresAuth, homeShortcut }` |
+| `transitions` | Edge[] \| absent | flow edges from a Step 2c flow description: `{ from, trigger, to, presentation: "push" \| "sheet" \| "modal" }` — screen names in `from`/`to`; built as real handlers by DESIGN.md §2 |
+
+Screen: `{ name, screenNodeId, componentNodeIds: { <componentName>: nodeId }, stateNodeIds: { <state>: nodeId }, status: "pending" | "generated" | "verified", role?: "screen" | "sheet" | "modal" }` (`role` defaults to `"screen"`; sheets/modals from a flow description carry theirs).
+
+**Node IDs only, never full figma.com URLs** — URLs can carry tokens and the spec is
+persisted into the repo; validateSpec rejects a design block containing figma.com URLs.
 
 ## Minimal GET example
 

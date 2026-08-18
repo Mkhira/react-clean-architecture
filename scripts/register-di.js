@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /**
  * register-di.js — wire a generated feature into the app: tsyringe DI
- * (tokens.ts + container.ts), i18n (i18n.ts featureTranslations), AppConfig /
- * ConfigService fields, and the SIX .env files. Node stdlib only.
+ * (tokens.ts + container.ts), i18n (merger.ts featureTranslations), react-query
+ * keys (data/services/keys.ts), AppConfig / ConfigService fields, and the SIX
+ * .env files. Node stdlib only.
  *
  * Usage:
  *   node register-di.js <feature-spec.json> [--repo <path>]
@@ -21,7 +22,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { featureModel } = require('./generate.js');
+const { featureModel, queryKeyName, queryKeyValue } = require('./generate.js');
 
 const HELP = `register-di.js — register a generated feature in DI, i18n, config, and env files.
 
@@ -289,18 +290,24 @@ function updateContainer(repo, f) {
     write(file, content);
 }
 
-// ---------------------------------------------------------------- i18n.ts ----
+// -------------------------------------------------------------- merger.ts ----
 
 function updateI18n(repo, f) {
-    const file = path.join(repo, 'src', 'core', 'localization', 'i18n.ts');
+    // The app registers feature translations in merger.ts (featureTranslations),
+    // importing each feature's TS barrel (presentation/translations/index.ts).
+    const file = path.join(repo, 'src', 'core', 'localization', 'merger.ts');
+    if (!fs.existsSync(file)) {
+        report.needsManual.push(`merger.ts: src/core/localization/merger.ts not found — register the ${f.feature} translations by hand (barrel import + featureTranslations entry)`);
+        return;
+    }
     let content = read(file);
-    const label = 'i18n.ts';
+    const label = 'merger.ts';
 
     const lines = content.split('\n');
-    // last feature-translation import (JSON files imported directly, never a barrel)
+    // last feature-translation barrel import
     let lastTranslationImport = -1;
     for (let index = 0; index < lines.length; index++) {
-        if (/^import \w+ from '.*translations\/(en|ar)\.json';/.test(lines[index])) lastTranslationImport = index;
+        if (/^import .+ from '@features\/.*translations';/.test(lines[index])) lastTranslationImport = index;
     }
     content = plantAnchorAfterLine(
         file,
@@ -309,17 +316,53 @@ function updateI18n(repo, f) {
         lastTranslationImport >= 0 ? lastTranslationImport : lastImportLineIndex(lines),
         label
     );
-    content = plantAnchorBeforeMatch(file, content, '// <create-feature:i18n-features>', /^\} as const;/, label, '  ');
+    content = plantAnchorBeforeMatch(file, content, '// <create-feature:i18n-features>', /^\} as const;/, label, '    ');
 
     const imports = [
-        `import ${f.featureCamel}En from '@features/${f.feature}/presentation/translations/en.json';`,
-        `import ${f.featureCamel}Ar from '@features/${f.feature}/presentation/translations/ar.json';`,
+        `import ${f.featureCamel} from '@features/${f.feature}/presentation/translations';`,
     ];
     content = insertLines(content, '// <create-feature:i18n-imports>', imports, label);
 
-    // featureTranslations uses the file's 2-space indent
-    const entry = [`  ${f.featureCamel}: { en: ${f.featureCamel}En, ar: ${f.featureCamel}Ar },`];
-    content = insertLines(content, '// <create-feature:i18n-features>', entry, label);
+    // featureTranslations uses the file's 4-space indent. The shorthand entry
+    // is checked with an ANCHORED regex, not substring-includes: `    order,`
+    // is a substring of an existing `    reorder,`, which would silently skip
+    // the insert while the import above still lands (half-edited file).
+    const entryLine = `    ${f.featureCamel},`;
+    if (new RegExp(`^\\s{4}${f.featureCamel},\\s*$`, 'm').test(content)) {
+        report.skippedExisting.push(`${label}: ${entryLine.trim()}`);
+    } else {
+        const updated = insertBeforeAnchor(content, '// <create-feature:i18n-features>', entryLine);
+        if (updated === null) {
+            report.needsManual.push(`${label}: anchor "// <create-feature:i18n-features>" missing — insert by hand: ${entryLine.trim()}`);
+        } else {
+            content = updated;
+            report.inserted.push(`${label}: ${entryLine.trim()}`);
+        }
+    }
+
+    write(file, content);
+}
+
+// ------------------------------------------------- query keys (keys.ts) ----
+
+function updateQueryKeys(repo, f) {
+    // Central react-query key registry consumed by presentation/queries.ts.
+    // Only GET endpoints get keys (mutations don't cache).
+    const entries = f.endpoints
+        .filter((e) => e.method === 'GET')
+        .map((e) => `    ${queryKeyName(f, e)}: '${queryKeyValue(f, e)}',`);
+    if (!entries.length) return;
+
+    const file = path.join(repo, 'src', 'data', 'services', 'keys.ts');
+    if (!fs.existsSync(file)) {
+        report.needsManual.push(`keys.ts: src/data/services/keys.ts not found — add the ${f.feature} query keys by hand`);
+        return;
+    }
+    let content = read(file);
+    const label = 'keys.ts';
+
+    content = plantAnchorBeforeMatch(file, content, '// <create-feature:query-keys>', /^\} as const;/, label, '    ');
+    content = insertLines(content, '// <create-feature:query-keys>', entries, label);
 
     write(file, content);
 }
@@ -475,6 +518,7 @@ function main() {
     updateTokens(repo, f);
     updateContainer(repo, f);
     updateI18n(repo, f);
+    updateQueryKeys(repo, f);
     updateConfig(repo, f, envFields);
     updateEnvFiles(repo, f, envFields);
 

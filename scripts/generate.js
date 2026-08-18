@@ -55,6 +55,8 @@ const snakeUpper = (value) =>
 /** "TaxValidation" → "Tax Validation" */
 const titleWords = (value) => pascal(value).replace(/([a-z0-9])([A-Z])/g, '$1 $2');
 
+const kebab = (value) => pascal(value).replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
+
 const quoteKey = (key) => (/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(key) ? key : JSON.stringify(key));
 
 // ------------------------------------------------------------ spec model ----
@@ -113,7 +115,9 @@ function endpointModel(spec, endpoint) {
 
 function featureModel(spec) {
     const feature = pascal(spec.feature);
-    const endpoints = spec.endpoints.map((endpoint) => endpointModel(spec, endpoint));
+    // design-only resume records carry no endpoints — lifecycle scripts
+    // (remove/rename) must still be able to model them without crashing
+    const endpoints = (spec.endpoints ?? []).map((endpoint) => endpointModel(spec, endpoint));
     return {
         feature,
         featureCamel: camel(spec.feature),
@@ -773,17 +777,135 @@ ${callLine}
 
 // ---------------------------------------------------- presentation files ----
 
+/** Query-key constant name in src/data/services/keys.ts for one endpoint. */
+function queryKeyName(f, e) {
+    return `${f.FEATURE_SNAKE}_${e.endpointKey}`;
+}
+
+/** Kebab-case query-key value ("integrated-tariff-sections" style). */
+function queryKeyValue(f, e) {
+    return `${kebab(f.feature)}-${kebab(e.ActionPascal)}`;
+}
+
+/** Type imports one query hook needs (appended via ensureImports on append). */
+function queryHookImports(f, e) {
+    return e.inputFields.length
+        ? [`import type { ${e.input} } from '../domain/entities/${e.entity}';`]
+        : [];
+}
+
+/** One GET endpoint's query hook (used by create's queriesFile AND append). */
+function queryHookSnippet(f, e) {
+    const key = `QUERIES_KEYS.${queryKeyName(f, e)}`;
+    const cacheOption = e.cache ? `storeDuration: '${e.cache}'` : null;
+    if (!e.inputFields.length) {
+        const options = cacheOption ? `,\n        { ${cacheOption} }` : '';
+        return `export const use${e.ActionPascal}Query = () => {
+    const ${e.actionCamel}UseCase = useResolve(TOKENS.${e.useCase});
+
+    return useApiQuery(
+        [${key}],
+        async () => {
+            const outcome = await ${e.actionCamel}UseCase.execute();
+            if (Result.isErr(outcome)) throw outcome.error;
+            return outcome.data;
+        }${options}
+    );
+};`;
+    }
+    const optionEntries = [`enabled: options?.enabled ?? true`, cacheOption].filter(Boolean);
+    return `export const use${e.ActionPascal}Query = (input: ${e.input}, options?: { enabled?: boolean }) => {
+    const ${e.actionCamel}UseCase = useResolve(TOKENS.${e.useCase});
+
+    return useApiQuery(
+        [${key}, input],
+        async () => {
+            const outcome = await ${e.actionCamel}UseCase.execute(input);
+            if (Result.isErr(outcome)) throw outcome.error;
+            return outcome.data;
+        },
+        { ${optionEntries.join(', ')} }
+    );
+};`;
+}
+
+/**
+ * React Query bindings — one hook per GET endpoint, matching the app pattern
+ * (integrated-tariff): resolve the use case via DI, unwrap the Result so
+ * react-query owns error state, cache via storeDuration when the spec asks.
+ */
+function queriesFile(f) {
+    const gets = f.endpoints.filter((e) => e.method === 'GET');
+    const inputImports = gets.flatMap((e) => queryHookImports(f, e));
+
+    return `/**
+ * ${f.feature} — React Query bindings.
+ *
+ * The presentation layer owns all server-state hooks; each hook resolves its
+ * use case through DI and unwraps the Result so react-query owns error state.
+ */
+
+import QUERIES_KEYS from '@data/services/keys';
+import { useApiQuery } from '@shared/hooks/useApiQuery';
+import { useResolve } from '@shared/hooks/useResolve';
+import { TOKENS } from '@core/di/tokens';
+import { Result } from '@shared/types/Result';
+${inputImports.length ? inputImports.join('\n') + '\n' : ''}
+${gets.map((e) => queryHookSnippet(f, e)).join('\n\n')}
+
+// <create-feature:queries>
+`;
+}
+
 function controllerFile(f) {
     const first = f.endpoints[0];
     const others = f.endpoints.slice(1);
+    const firstIsGetQuery = first.method === 'GET';
+
+    const otherLines = others
+        .map((e) => e.method === 'GET'
+            ? `    // const { data: ${e.actionCamel}Result } = use${e.ActionPascal}Query(${e.inputFields.length ? '/* input */' : ''});`
+            : `    // const ${e.actionCamel}UseCase = useResolve(TOKENS.${e.useCase});`)
+        .join('\n');
+
+    if (firstIsGetQuery) {
+        const wired = !first.inputFields.length;
+        const queryBlock = wired
+            ? `    const {
+        data: ${first.actionCamel}Result,
+        isLoading,
+        isError,
+    } = use${first.ActionPascal}Query();`
+            : `    // TODO(claude): wire the query once the screen knows its input values:
+    // const { data: ${first.actionCamel}Result, isLoading, isError } = use${first.ActionPascal}Query({ /* input */ });`;
+        const returnExtras = wired ? `${first.actionCamel}Result, isLoading, isError, ` : '';
+        const queryImport = wired ? `import { use${first.ActionPascal}Query } from './queries';\n` : '';
+        return `import React from 'react';
+import { useTranslation } from 'react-i18next';
+import { useTheme } from '@core/theme/ThemeContext';
+${queryImport}import { createStyles } from './styles';
+
+/**
+ * Screen controller — server state flows through the query hooks (./queries);
+ * this hook owns UI state and derived values only.
+ */
+export function useController() {
+    const theme = useTheme();
+    const styles = React.useMemo(() => createStyles(theme), [theme]);
+    const { t } = useTranslation();
+
+${queryBlock}
+${otherLines}${others.length ? '\n' : ''}
+    return { styles, t, theme, ${returnExtras}};
+}
+`;
+    }
 
     const typeImports = [first.hasResponse ? first.entity : null, first.inputFields.length ? first.input : null].filter(Boolean);
-
     const resultState = first.hasResponse
         ? `    const [result, setResult] = React.useState<${first.entity} | null>(null);\n`
         : '';
     const okBranch = first.hasResponse ? `            setResult(outcome.data);` : `            // success — no payload for this endpoint`;
-
     const runnerArg = first.inputFields.length ? `input: ${first.input}` : '';
     const runnerCall = first.inputFields.length ? 'input' : '';
 
@@ -801,7 +923,7 @@ const logger = createLogger('${f.feature}');
 
 export function useController() {
     const ${first.actionCamel}UseCase = useResolve(TOKENS.${first.useCase});
-${others.map((e) => `    // const ${e.actionCamel}UseCase = useResolve(TOKENS.${e.useCase});`).join('\n')}${others.length ? '\n' : ''}    const theme = useTheme();
+${otherLines}${others.length ? '\n' : ''}    const theme = useTheme();
     const styles = React.useMemo(() => createStyles(theme), [theme]);
     const { t } = useTranslation();
 ${resultState}    const [error, setError] = React.useState<${f.errorType} | null>(null);
@@ -828,15 +950,17 @@ ${okBranch}
 
 function screenFile(f) {
     return `import React from 'react';
-import { Text, View } from 'react-native';
-import { useController } from './${f.featureCamel}Controller';
+import { View } from 'react-native';
+import { Label } from '@shared/components';
+import { useController } from '../controller';
 
+/** Starter screen — the design lane (DESIGN.md) replaces this with the Figma build. */
 export default function ${f.feature}Screen() {
     const { styles, t } = useController();
 
     return (
         <View style={styles.container}>
-            <Text>{t('${f.featureCamel}.title')}</Text>
+            <Label type="h2Header">{t('${f.featureCamel}.title')}</Label>
         </View>
     );
 }
@@ -863,34 +987,38 @@ function presentationTypesFile(f) {
 `;
 }
 
+// TS modules with a default-export barrel — the app convention (see
+// integrated-tariff/presentation/translations and core/localization/merger.ts).
 function translationsEn(f) {
-    return JSON.stringify(
-        {
-            title: titleWords(f.feature),
-            errors: {
-                network: 'Something went wrong. Please try again.',
-                validation: 'Please check your input and try again.',
-            },
-        },
-        null,
-        4
-    ) + '\n';
+    return `export default {
+    title: '${titleWords(f.feature)}',
+    errors: {
+        network: 'Something went wrong. Please try again.',
+        validation: 'Please check your input and try again.',
+    },
+};
+`;
 }
 
 function translationsAr(f) {
     // Values are filled from the user story's Arabic strings when available —
     // Claude replaces these placeholders right after generation.
-    return JSON.stringify(
-        {
-            title: titleWords(f.feature),
-            errors: {
-                network: 'حدث خطأ ما، يرجى المحاولة مرة أخرى.',
-                validation: 'يرجى التحقق من البيانات المدخلة والمحاولة مرة أخرى.',
-            },
-        },
-        null,
-        4
-    ) + '\n';
+    return `export default {
+    title: '${titleWords(f.feature)}',
+    errors: {
+        network: 'حدث خطأ ما، يرجى المحاولة مرة أخرى.',
+        validation: 'يرجى التحقق من البيانات المدخلة والمحاولة مرة أخرى.',
+    },
+};
+`;
+}
+
+function translationsIndex() {
+    return `import ar from './ar.ts';
+import en from './en.ts';
+
+export default { ar, en };
+`;
 }
 
 // ---------------------------------------------------------------- tests ----
@@ -1076,14 +1204,17 @@ function buildFilePlan(spec, f, testsDir = 'test') {
     files.set(path.join(base, 'domain', 'IServices', `${f.serviceInterface}.ts`), serviceInterfaceFile(f));
     files.set(path.join(base, 'domain', 'IRepositories', `${f.repositoryInterface}.ts`), repositoryInterfaceFile(f));
     files.set(path.join(base, 'domain', 'errors', `${f.errorType}.ts`), errorsFile(f));
-    files.set(path.join(base, 'presentation', `${f.featureCamel}Controller.ts`), controllerFile(f));
-    files.set(path.join(base, 'presentation', `${f.featureCamel}Screen.tsx`), screenFile(f));
+    files.set(path.join(base, 'presentation', 'controller.ts'), controllerFile(f));
+    if (f.endpoints.some((e) => e.method === 'GET')) {
+        files.set(path.join(base, 'presentation', 'queries.ts'), queriesFile(f));
+    }
+    files.set(path.join(base, 'presentation', 'screens', `${f.feature}Screen.tsx`), screenFile(f));
     files.set(path.join(base, 'presentation', 'styles.ts'), stylesFile());
     files.set(path.join(base, 'presentation', 'types.ts'), presentationTypesFile(f));
-    files.set(path.join(base, 'presentation', 'translations', 'en.json'), translationsEn(f));
-    files.set(path.join(base, 'presentation', 'translations', 'ar.json'), translationsAr(f));
+    files.set(path.join(base, 'presentation', 'translations', 'en.ts'), translationsEn(f));
+    files.set(path.join(base, 'presentation', 'translations', 'ar.ts'), translationsAr(f));
+    files.set(path.join(base, 'presentation', 'translations', 'index.ts'), translationsIndex());
     files.set(path.join(base, 'presentation', 'components', '.gitkeep'), '');
-    files.set(path.join(base, 'presentation', 'screens', '.gitkeep'), '');
     files.set(path.join(base, 'presentation', 'utils', '.gitkeep'), '');
 
     // per-endpoint files (create + append)
@@ -1258,11 +1389,45 @@ function appendFeature(repo, spec, f, manifest) {
             manifest.needsManual.push(`${path.relative(repo, serviceFilePath)}: new app-host endpoint but the ctor lacks httpClient — add "private readonly httpClient: IHttpClient" (+ its import and the DI registration argument) by hand`);
         }
     }
+
+    // presentation/queries.ts — every appended GET endpoint gets its hook here,
+    // matching the query key register-di.js will add to keys.ts. Without this
+    // the key would be an orphan and the hook silently missing.
+    const gets = f.endpoints.filter((e) => e.method === 'GET');
+    if (gets.length) {
+        const queriesPath = path.join(base, 'presentation', 'queries.ts');
+        if (!fs.existsSync(queriesPath)) {
+            fs.mkdirSync(path.dirname(queriesPath), { recursive: true });
+            fs.writeFileSync(queriesPath, queriesFile(f));
+            manifest.created.push(path.relative(repo, queriesPath));
+        } else {
+            let content = fs.readFileSync(queriesPath, 'utf8');
+            let changed = false;
+            for (const e of gets) {
+                if (content.includes(`export const use${e.ActionPascal}Query`)) continue; // idempotent
+                const updated = insertBeforeAnchor(content, '// <create-feature:queries>', queryHookSnippet(f, e) + '\n');
+                if (updated === null) {
+                    manifest.needsManual.push(`src/features/${f.feature}/presentation/queries.ts: anchor "// <create-feature:queries>" missing — add use${e.ActionPascal}Query by hand, matching the file's existing hooks`);
+                    continue;
+                }
+                content = ensureImports(updated, queryHookImports(f, e));
+                changed = true;
+            }
+            if (changed) {
+                fs.writeFileSync(queriesPath, content);
+                manifest.patched.push(path.relative(repo, queriesPath));
+            }
+        }
+        manifest.needsClaude.push(`src/features/${f.feature}/presentation — wire the new use<Action>Query hook(s) into the controller/screens where the flow needs them`);
+    }
 }
 
 // ------------------------------------------------------------ validation ----
 
 const SUPPORTED_METHODS = new Set(['GET', 'POST', 'PUT', 'DELETE']);
+
+/** Allowed values for an endpoint's optional `cache` (useApiQuery storeDuration). */
+const CACHE_DURATIONS = new Set(['6-hours', '8-hours', '12-hours', '24-hours', '2-days', '1-week']);
 
 /**
  * Rejects specs that would generate broken TypeScript instead of failing later
@@ -1280,6 +1445,10 @@ function validateSpec(spec) {
     }
     if (!['create', 'append'].includes(spec.mode)) {
         problems.push(`mode must be "create" or "append", got "${spec.mode}".`);
+    }
+    if (!Array.isArray(spec.endpoints) || !spec.endpoints.length) {
+        problems.push('endpoints must be a non-empty array — design-only features never run generate.js (see SKILL.md Step 1b).');
+        return problems;
     }
 
     const seenActions = new Set();
@@ -1331,8 +1500,29 @@ function validateSpec(spec) {
             problems.push(`${label}: statusEnum needs at least one value.`);
         }
 
+        // optional response cache (maps onto useApiQuery's storeDuration)
+        if (endpoint.cache != null) {
+            if (!CACHE_DURATIONS.has(endpoint.cache)) {
+                problems.push(`${label}: cache "${endpoint.cache}" is not a valid storeDuration (${[...CACHE_DURATIONS].join(', ')}).`);
+            }
+            if (endpoint.method && endpoint.method !== 'GET') {
+                problems.push(`${label}: cache applies to GET endpoints only.`);
+            }
+        }
+
         if (endpoint.requestSample && ['GET', 'DELETE'].includes(endpoint.method)) {
             problems.push(`${label}: ${endpoint.method} endpoints must not carry a request body — move the values to queryParams or pathParams.`);
+        }
+
+        // a primitive sample would emit `ResponseDTO = string` plus a garbage
+        // entity built from the string's character indices
+        if (endpoint.responseSample != null && typeof endpoint.responseSample !== 'object') {
+            problems.push(`${label}: responseSample must be a JSON object or array (got ${typeof endpoint.responseSample}) — wrap primitives in an object or use null for "none".`);
+        }
+
+        // the query string is modeled in queryParams, never inline in the path
+        if (typeof endpoint.path === 'string' && endpoint.path.includes('?')) {
+            problems.push(`${label}: path contains a query string — move it to queryParams (paths hold the path only).`);
         }
 
         // colliding input names (e.g. body field "Id" + path param "id") would
@@ -1346,6 +1536,27 @@ function validateSpec(spec) {
         ];
         for (const name of inputNames.filter((name, i) => inputNames.indexOf(name) !== i)) {
             problems.push(`${label}: input field "${name}" appears more than once across body/path/query — rename one of them.`);
+        }
+    }
+
+    // optional design-lane block (see DESIGN.md) — node IDs only, never full
+    // Figma URLs (URLs can carry tokens and would be persisted verbatim)
+    if (spec.design != null) {
+        if (typeof spec.design !== 'object' || Array.isArray(spec.design)) {
+            problems.push('design must be an object ({ fileKey, screens, serviceCard }), not an array or primitive.');
+            return problems;
+        }
+        if (spec.design.screens != null && !Array.isArray(spec.design.screens)) {
+            problems.push('design.screens must be an array.');
+        }
+        for (const screen of Array.isArray(spec.design?.screens) ? spec.design.screens : []) {
+            if (!screen.name) problems.push('every design.screens entry needs a "name".');
+        }
+        const serialized = JSON.stringify(spec.design);
+        // protocol-optional + case-insensitive so "figma.com/design/…?token=…"
+        // can't slip through without the https:// prefix
+        if (/figma\.com\//i.test(serialized)) {
+            problems.push('design block must store fileKey + node IDs, not figma.com URLs (strip them before writing the spec).');
         }
     }
     return problems;
@@ -1381,6 +1592,20 @@ function main() {
     }
 
     const f = featureModel(spec);
+
+    // macOS FS is case-insensitive: creating "Ordertracking" next to an existing
+    // "OrderTracking" would dump mismatched files INTO the existing feature dir.
+    if (spec.mode === 'create') {
+        const featuresDir = path.join(repo, 'src', 'features');
+        const clash = fs.existsSync(featuresDir)
+            ? fs.readdirSync(featuresDir).find((name) => name.toLowerCase() === f.feature.toLowerCase() && name !== f.feature)
+            : null;
+        if (clash) {
+            console.error(`generate.js: feature "${f.feature}" collides case-insensitively with existing src/features/${clash} — append to the existing name or pick a different one.`);
+            return 1;
+        }
+    }
+
     const { files, perEndpoint } = buildFilePlan(spec, f, testsDirName(repo, f.feature));
     const manifest = { feature: f.feature, mode: spec.mode, created: [], skipped: [], patched: [], needsClaude: [], needsManual: [] };
 
@@ -1421,7 +1646,7 @@ function main() {
         manifest.needsClaude.push(`src/features/${f.feature}/domain/usecases/${e.useCase}.ts — fill execute() business rules${e.statusEnum ? ` + status derivation in ${e.mapper}.ts` : ''}`);
     }
     if (spec.mode === 'create') {
-        manifest.needsClaude.push(`src/features/${f.feature}/presentation/translations/ar.json — replace placeholder Arabic strings (use the user story's Arabic text when present)`);
+        manifest.needsClaude.push(`src/features/${f.feature}/presentation/translations/ar.ts — replace placeholder Arabic strings (use the user story's Arabic text when present)`);
     }
 
     fs.writeFileSync(path.join(repo, '.claude-skill-manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
@@ -1433,6 +1658,6 @@ if (require.main === module) {
     process.exit(main());
 }
 
-const SKILL_VERSION = '1.4.0';
+const SKILL_VERSION = '1.5.0';
 
-module.exports = { featureModel, buildFilePlan, testsDirName, validateSpec, pascal, camel, snakeUpper, SKILL_VERSION };
+module.exports = { featureModel, buildFilePlan, testsDirName, validateSpec, pascal, camel, snakeUpper, kebab, queryKeyName, queryKeyValue, SKILL_VERSION };

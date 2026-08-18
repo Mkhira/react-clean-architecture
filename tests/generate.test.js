@@ -56,7 +56,10 @@ test('create mode: full tree, anchors, and manifest; never overwrites on re-run'
         `${base}/data/services/OrderTrackingService.ts`,
         `${base}/domain/usecases/TrackOrderUseCase.ts`,
         `${base}/test/TrackOrderMapper.test.ts`,
-        `${base}/presentation/translations/ar.json`,
+        `${base}/presentation/controller.ts`,
+        `${base}/presentation/screens/OrderTrackingScreen.tsx`,
+        `${base}/presentation/translations/ar.ts`,
+        `${base}/presentation/translations/index.ts`,
         `${base}/presentation/components/.gitkeep`,
     ]) {
         assert.ok(exists(repo, file), `missing ${file}`);

@@ -79,14 +79,36 @@ export function configureDependencies(): void {
     write(repo, 'src/core/localization/i18n.ts', `import i18n from 'i18next';
 import en from './translations/en.json';
 import ar from './translations/ar.json';
-import accountEn from '@features/account/presentation/translations/en.json';
-import accountAr from '@features/account/presentation/translations/ar.json';
-
-const featureTranslations = {
-  account: { en: accountEn, ar: accountAr },
-} as const;
+import { featureTranslationsFor } from './merger';
 
 export default i18n;
+`);
+
+    // Mirrors the real app's merger.ts: TS barrels imported per feature,
+    // registered by namespace in featureTranslations.
+    write(repo, 'src/core/localization/merger.ts', `import { AppLanguage } from './i18n';
+import account from '@features/account/presentation/translations';
+
+const featureTranslations = {
+    account,
+} as const;
+
+export const featureTranslationsFor = (language: AppLanguage) =>
+    Object.fromEntries(
+        Object.entries(featureTranslations).map(([namespace, byLanguage]) => [
+            namespace,
+            byLanguage[language],
+        ])
+    );
+`);
+
+    // Mirrors the real app's central react-query key registry.
+    write(repo, 'src/data/services/keys.ts', `const QUERIES_KEYS = {
+    BANNERS: 'banners',
+    INTEGRATED_TARIFF_SECTIONS: 'integrated-tariff-sections',
+} as const;
+
+export default QUERIES_KEYS;
 `);
 
     write(repo, 'src/core/config/IConfigService.ts', `export interface AppConfig {

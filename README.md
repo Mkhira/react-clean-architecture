@@ -16,7 +16,10 @@ src/features/<Feature>/
 ```
 
 plus tsyringe DI registration (`tokens.ts` + `container.ts`), i18next registration
-(`i18n.ts`), `AppConfig`/`ConfigService` fields, and all six `.env` files.
+(`merger.ts` featureTranslations), react-query keys (`data/services/keys.ts`),
+`AppConfig`/`ConfigService` fields, and all six `.env` files. The design lane
+([DESIGN.md](DESIGN.md)) builds the feature's real screens from Figma and verifies
+them on the iOS simulator.
 
 ## Why it's script-driven
 

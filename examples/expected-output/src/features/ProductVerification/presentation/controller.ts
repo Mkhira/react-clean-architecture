@@ -13,7 +13,7 @@ const logger = createLogger('ProductVerification');
 
 export function useController() {
     const verifyProductCodeUseCase = useResolve(TOKENS.VerifyProductCodeUseCase);
-    // const getScanHistoryUseCase = useResolve(TOKENS.GetScanHistoryUseCase);
+    // const { data: getScanHistoryResult } = useGetScanHistoryQuery(/* input */);
     const theme = useTheme();
     const styles = React.useMemo(() => createStyles(theme), [theme]);
     const { t } = useTranslation();

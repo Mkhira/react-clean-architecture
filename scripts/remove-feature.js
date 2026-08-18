@@ -23,7 +23,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { featureModel, pascal } = require('./generate.js');
+const { featureModel, pascal, queryKeyName } = require('./generate.js');
 
 const HELP = `remove-feature.js — remove a skill-generated feature everywhere it was wired.
 
@@ -164,18 +164,35 @@ function main() {
     const blocks = removeRegistrationBlocks(plan.content, tokenKeys, feature);
     applyEdit(repo, containerPath, blocks.content, apply);
 
-    // 4. i18n.ts — imports + featureTranslations entry
-    const i18nPath = 'src/core/localization/i18n.ts';
+    // 4. merger.ts — barrel import + featureTranslations entry
+    const i18nPath = 'src/core/localization/merger.ts';
     let i18n = fs.readFileSync(path.join(repo, i18nPath), 'utf8');
     plan = planLineRemovals(i18n, (line) =>
-        line.includes(`@features/${feature}/presentation/translations/`) ||
-        new RegExp(`^\\s+${f.featureCamel}: \\{ en: `).test(line), 'i18n.ts');
+        line.includes(`@features/${feature}/presentation/translations`) ||
+        new RegExp(`^\\s+${f.featureCamel},\\s*$`).test(line), 'merger.ts');
     applyEdit(repo, i18nPath, plan.content, apply);
+
+    // 4b. keys.ts — react-query keys added by register-di.js. Only the EXACT
+    // keys derived from this feature's spec: a wildcard on the snake prefix
+    // would also delete keys of features/app code sharing the prefix
+    // (e.g. removing "Order" must never touch ORDER_TRACKING_*).
+    const keysPath = 'src/data/services/keys.ts';
+    if (fs.existsSync(path.join(repo, keysPath))) {
+        const exactKeys = f.endpoints
+            .filter((e) => e.method === 'GET')
+            .map((e) => queryKeyName(f, e));
+        if (exactKeys.length) {
+            const keys = fs.readFileSync(path.join(repo, keysPath), 'utf8');
+            plan = planLineRemovals(keys, (line) =>
+                exactKeys.some((key) => new RegExp(`^\\s+${key}: '`).test(line)), 'keys.ts');
+            applyEdit(repo, keysPath, plan.content, apply);
+        }
+    }
 
     // 5. config fields + env keys (from the persisted spec)
     const configFields = [];
     const envKeys = [];
-    for (const endpoint of spec.endpoints) {
+    for (const endpoint of spec.endpoints ?? []) {
         if (endpoint.hostType === 'external' && endpoint.baseUrl?.envKey) {
             configFields.push(endpoint.baseUrl.configField);
             envKeys.push(endpoint.baseUrl.envKey);

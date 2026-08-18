@@ -108,7 +108,8 @@ test('remove: dry run touches nothing; --apply unwires everything but keeps the 
     assert.equal(applied.status, 0, applied.stdout + applied.stderr);
     assert.ok(!exists(repo, 'src/features/OrderTracking'), 'feature dir removed');
 
-    for (const file of ['src/core/di/tokens.ts', 'src/core/di/container.ts', 'src/core/localization/i18n.ts',
+    for (const file of ['src/core/di/tokens.ts', 'src/core/di/container.ts', 'src/core/localization/merger.ts',
+        'src/data/services/keys.ts',
         'src/core/config/IConfigService.ts', 'src/core/config/ConfigService.ts',
         '.env', '.env.development', '.env.example', '.env.staging', '.env.preprod', '.env.production']) {
         const content = read(repo, file);
@@ -117,7 +118,7 @@ test('remove: dry run touches nothing; --apply unwires everything but keeps the 
     // permanent infrastructure stays
     assert.match(read(repo, 'src/core/di/tokens.ts'), /\/\/ <create-feature:tokens>/);
     assert.match(read(repo, 'src/core/di/container.ts'), /\/\/ <create-feature:registrations>/);
-    assert.match(read(repo, 'src/core/localization/i18n.ts'), /\/\/ <create-feature:i18n-features>/);
+    assert.match(read(repo, 'src/core/localization/merger.ts'), /\/\/ <create-feature:i18n-features>/);
     // unrelated tokens untouched
     assert.match(read(repo, 'src/core/di/tokens.ts'), /ExistingUseCase: 'ExistingUseCase',/);
 });
@@ -139,7 +140,7 @@ test('rename: --apply renames dir/files/identifiers/env keys; action-scoped name
 
     assert.ok(!exists(repo, 'src/features/OrderTracking'));
     assert.ok(exists(repo, 'src/features/ShipmentTrace/data/services/ShipmentTraceService.ts'));
-    assert.ok(exists(repo, 'src/features/ShipmentTrace/presentation/shipmentTraceController.ts'));
+    assert.ok(exists(repo, 'src/features/ShipmentTrace/presentation/controller.ts'));
 
     const tokens = read(repo, 'src/core/di/tokens.ts');
     assert.match(tokens, /ShipmentTraceService: 'IShipmentTraceService',/);
@@ -157,7 +158,8 @@ test('rename: --apply renames dir/files/identifiers/env keys; action-scoped name
         assert.ok(!read(repo, file).includes('ORDER_TRACKING'));
     }
     assert.match(read(repo, 'src/core/config/ConfigService.ts'), /shipmentTraceBaseUrl: process\.env\.EXPO_PUBLIC_SHIPMENT_TRACE_BASE_URL/);
-    assert.match(read(repo, 'src/core/localization/i18n.ts'), /shipmentTrace: \{ en: shipmentTraceEn, ar: shipmentTraceAr \},/);
+    assert.match(read(repo, 'src/core/localization/merger.ts'), /import shipmentTrace from '@features\/ShipmentTrace\/presentation\/translations';/);
+    assert.match(read(repo, 'src/core/localization/merger.ts'), /^    shipmentTrace,$/m);
 
     const persisted = read(repo, 'src/features/ShipmentTrace/feature-spec.json');
     assert.match(persisted, /"feature": "ShipmentTrace"/);

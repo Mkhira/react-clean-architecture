@@ -20,7 +20,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { featureModel, pascal, camel, snakeUpper } = require('./generate.js');
+const { featureModel, pascal, camel, snakeUpper, kebab } = require('./generate.js');
 
 const HELP = `rename-feature.js — rename a skill-generated feature across code, DI, i18n, config, env.
 
@@ -50,15 +50,38 @@ function replacementPairs(oldForms, newForms, spec) {
         [`${oldForms.snake}_ENDPOINTS`, `${newForms.snake}_ENDPOINTS`],
         [`${oldForms.snake}_ERROR_CODE`, `${newForms.snake}_ERROR_CODE`], // covers _CODES and _CODE_VALUES
         [`createLogger('${oldForms.pascal}')`, `createLogger('${newForms.pascal}')`],
+        // container.ts feature banner — remove-feature matches it by the
+        // CURRENT name, so a rename must move it or removal leaves it orphaned
+        [`// -- ${oldForms.pascal} feature --`, `// -- ${newForms.pascal} feature --`],
         [`${oldForms.camel}Screen`, `${newForms.camel}Screen`],
         [`${oldForms.camel}Controller`, `${newForms.camel}Controller`],
         [`${oldForms.camel}En`, `${newForms.camel}En`],
         [`${oldForms.camel}Ar`, `${newForms.camel}Ar`],
         [`${oldForms.camel}: { en:`, `${newForms.camel}: { en:`],
+        // merger.ts barrel style: import + shorthand featureTranslations entry
+        [`import ${oldForms.camel} from '@features/`, `import ${newForms.camel} from '@features/`],
+        [`\n    ${oldForms.camel},`, `\n    ${newForms.camel},`],
         [`'${oldForms.camel}.`, `'${newForms.camel}.`],                   // t('<camel>.title')
         [`"feature": "${spec.feature}"`, `"feature": "${newForms.pascal}"`],
     ];
-    for (const endpoint of spec.endpoints) {
+    // react-query keys: full key + full kebab value per GET endpoint, so a
+    // feature named with this one's prefix can never be corrupted. Three
+    // shapes: the keys.ts declaration (`KEY: '`), and the queries.ts usage
+    // sites (`QUERIES_KEYS.KEY,` and `QUERIES_KEYS.KEY]`).
+    for (const endpoint of spec.endpoints ?? []) {
+        if (endpoint.method === 'GET') {
+            const actionSnake = snakeUpper(endpoint.action);
+            const actionKebab = kebab(pascal(endpoint.action));
+            pairs.push([`${oldForms.snake}_${actionSnake}:`, `${newForms.snake}_${actionSnake}:`]);
+            pairs.push([`QUERIES_KEYS.${oldForms.snake}_${actionSnake},`, `QUERIES_KEYS.${newForms.snake}_${actionSnake},`]);
+            pairs.push([`QUERIES_KEYS.${oldForms.snake}_${actionSnake}]`, `QUERIES_KEYS.${newForms.snake}_${actionSnake}]`]);
+            pairs.push([
+                `'${kebab(oldForms.pascal)}-${actionKebab}'`,
+                `'${kebab(newForms.pascal)}-${actionKebab}'`,
+            ]);
+        }
+    }
+    for (const endpoint of spec.endpoints ?? []) {
         const wire = [endpoint.baseUrl, ...(endpoint.headers ?? [])].filter(Boolean);
         for (const entry of wire) {
             if (entry.envKey?.includes(oldForms.snake)) {
@@ -129,7 +152,8 @@ function main() {
         }
     };
     collect(oldDir);
-    for (const relative of ['src/core/di/tokens.ts', 'src/core/di/container.ts', 'src/core/localization/i18n.ts',
+    for (const relative of ['src/core/di/tokens.ts', 'src/core/di/container.ts', 'src/core/localization/merger.ts',
+        'src/data/services/keys.ts',
         'src/core/config/IConfigService.ts', 'src/core/config/ConfigService.ts', ...ENV_FILES]) {
         const absolute = path.join(repo, relative);
         if (fs.existsSync(absolute)) targets.push(absolute);
@@ -167,7 +191,7 @@ function main() {
     report.renamedFiles.push(`src/features/${oldForms.pascal}/ → src/features/${newForms.pascal}/`);
 
     report.reminders.push(
-        `Review \`git diff\`, update the human-facing title in presentation/translations/*.json if needed, ` +
+        `Review \`git diff\`, update the human-facing title in presentation/translations/*.ts if needed, ` +
         `fix any app/ route files importing @features/${oldForms.pascal}/, then run audit.js against src/features/${newForms.pascal}/feature-spec.json.`
     );
     console.log(JSON.stringify(report, null, 2));

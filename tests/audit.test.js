@@ -149,6 +149,11 @@ test('--persist-spec: written only on PASS, and sanitized (no secrets, env refer
     assert.ok(!persisted.includes('https://partner.example.test/api'), 'devValue must be stripped');
     assert.match(persisted, /<env:EXPO_PUBLIC_ORDER_TRACKING_API_KEY>/);
     assert.match(persisted, /<env:EXPO_PUBLIC_ORDER_TRACKING_BASE_URL>/);
+
+    // the persisted spec joins the manifest's created list so rollback removes
+    // it too (otherwise an aborted run leaves the feature dir behind)
+    const manifest = JSON.parse(read(passing.repo, '.claude-skill-manifest.json'));
+    assert.ok(manifest.created.includes('src/features/OrderTracking/feature-spec.json'));
     assert.match(persisted, /"value": "<session>"/);
     // provenance and structure survive sanitization (append mode depends on them)
     assert.match(persisted, /"OrderNumber": "input"/);
@@ -165,4 +170,35 @@ test('audit reminders: session fields and expo-router navigation are always surf
     const result = runScript('audit.js', [specPath, '--repo', repo, ...AUDIT_FLAGS]);
     assert.match(result.stdout, /Session-sourced fields.*trackOrder\.CustomerId/);
     assert.match(result.stdout, /route file under app\//);
+});
+
+test('append + --persist-spec MERGES into the existing persisted spec (endpoints + design kept)', () => {
+    const { repo, specPath, spec } = auditedFixture();
+    // first persist: the create spec, enriched with a design block
+    const createSpec = JSON.parse(fs.readFileSync(specPath, 'utf8'));
+    createSpec.design = { fileKey: 'abc123', screens: [{ name: 'entry', screenNodeId: '1:2', status: 'verified' }] };
+    const createPath = path.join(makeTmpDir('s'), 'create.json');
+    fs.writeFileSync(createPath, JSON.stringify(createSpec, null, 2));
+    let result = runScript('audit.js', [createPath, '--repo', repo, ...AUDIT_FLAGS, '--persist-spec']);
+    assert.equal(result.status, 0, result.stdout);
+
+    // append run: ONE new endpoint only — must not clobber the record
+    const appendSpec = JSON.parse(JSON.stringify(createSpec));
+    appendSpec.mode = 'append';
+    delete appendSpec.design;
+    appendSpec.endpoints = [{
+        ...createSpec.endpoints[0],
+        action: 'cancelOrder',
+    }];
+    const appendPath = path.join(makeTmpDir('s'), 'append.json');
+    fs.writeFileSync(appendPath, JSON.stringify(appendSpec, null, 2));
+    runScript('generate.js', [appendPath, '--repo', repo]);
+    runScript('register-di.js', [appendPath, '--repo', repo]);
+    result = runScript('audit.js', [appendPath, '--repo', repo, ...AUDIT_FLAGS, '--persist-spec']);
+    assert.equal(result.status, 0, result.stdout);
+
+    const persisted = JSON.parse(read(repo, 'src/features/OrderTracking/feature-spec.json'));
+    assert.equal(persisted.mode, 'create', 'persisted spec stays the full feature record');
+    assert.deepEqual(persisted.endpoints.map((e) => e.action).sort(), ['cancelOrder', 'trackOrder']);
+    assert.equal(persisted.design.fileKey, 'abc123', 'design block survives the append persist');
 });

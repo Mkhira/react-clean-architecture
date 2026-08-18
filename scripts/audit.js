@@ -99,12 +99,18 @@ function checkDI(repo, f) {
 }
 
 function checkI18n(repo, f) {
-    const i18n = fs.readFileSync(path.join(repo, 'src', 'core', 'localization', 'i18n.ts'), 'utf8');
+    // The app registers feature translations in merger.ts via the feature's
+    // TS barrel (presentation/translations/index.ts).
+    const merger = fs.readFileSync(path.join(repo, 'src', 'core', 'localization', 'merger.ts'), 'utf8');
     const problems = [];
-    if (!i18n.includes(`${f.featureCamel}En`)) problems.push(`${f.featureCamel}En import missing`);
-    if (!new RegExp(`^\\s+${f.featureCamel}: \\{ en: `, 'm').test(i18n)) problems.push(`featureTranslations.${f.featureCamel} entry missing`);
+    if (!merger.includes(`import ${f.featureCamel} from '@features/${f.feature}/presentation/translations'`)) {
+        problems.push(`${f.featureCamel} barrel import missing`);
+    }
+    if (!new RegExp(`^\\s+${f.featureCamel},\\s*$`, 'm').test(merger)) {
+        problems.push(`featureTranslations.${f.featureCamel} entry missing`);
+    }
     if (problems.length) fail('i18n', problems.join('; '));
-    else pass('i18n', `featureTranslations.${f.featureCamel} registered`);
+    else pass('i18n', `featureTranslations.${f.featureCamel} registered in merger.ts`);
 }
 
 function collectEnvKeys(spec) {
@@ -290,7 +296,8 @@ function sanitizedSpec(spec) {
     const clone = JSON.parse(JSON.stringify(spec));
     // stamped so future template versions can detect what generated a feature
     clone.skillVersion = SKILL_VERSION;
-    for (const endpoint of clone.endpoints) {
+    // design-only resume records carry no endpoints
+    for (const endpoint of clone.endpoints ?? []) {
         if (endpoint.baseUrl?.envKey && endpoint.baseUrl.devValue) {
             endpoint.baseUrl.devValue = `<env:${endpoint.baseUrl.envKey}>`;
         }
@@ -302,10 +309,51 @@ function sanitizedSpec(spec) {
     return clone;
 }
 
+/**
+ * Append runs carry ONLY the new endpoints — persisting them verbatim would
+ * clobber the feature's full record (original endpoints + design block), which
+ * remove/rename/migrate rely on. Merge into the existing persisted spec:
+ * endpoints keyed by action (new wins), design kept unless the run brings one,
+ * and the stored mode stays "create" (the persisted spec IS the full feature).
+ */
+function specForPersist(repo, spec, f) {
+    const target = path.join(repo, 'src', 'features', f.feature, 'feature-spec.json');
+    if (spec.mode !== 'append' || !fs.existsSync(target)) return spec;
+    try {
+        const existing = JSON.parse(fs.readFileSync(target, 'utf8'));
+        const byAction = new Map((existing.endpoints ?? []).map((e) => [e.action, e]));
+        for (const endpoint of spec.endpoints ?? []) byAction.set(endpoint.action, endpoint);
+        return {
+            ...existing,
+            ...spec,
+            mode: 'create',
+            endpoints: [...byAction.values()],
+            design: spec.design ?? existing.design,
+        };
+    } catch {
+        return spec; // existing spec unreadable — persist what this run knows
+    }
+}
+
 function persistSpec(repo, spec, f) {
     const target = path.join(repo, 'src', 'features', f.feature, 'feature-spec.json');
-    fs.writeFileSync(target, JSON.stringify(sanitizedSpec(spec), null, 2) + '\n');
-    return path.relative(repo, target);
+    fs.writeFileSync(target, JSON.stringify(sanitizedSpec(specForPersist(repo, spec, f)), null, 2) + '\n');
+    const relative = path.relative(repo, target);
+
+    // Record the persisted spec in the generation manifest so rollback.js
+    // deletes it too — otherwise an aborted run leaves the feature dir behind
+    // with only feature-spec.json inside.
+    const manifestPath = path.join(repo, '.claude-skill-manifest.json');
+    if (fs.existsSync(manifestPath)) {
+        try {
+            const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+            manifest.created = [...new Set([...(manifest.created ?? []), relative])];
+            fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
+        } catch {
+            // unreadable manifest: leave it alone — rollback already warns on it
+        }
+    }
+    return relative;
 }
 
 // ------------------------------------------------------------------ main ----
@@ -366,7 +414,7 @@ function main() {
             .map(([field]) => `${endpoint.action}.${field}`)
     );
     if (sessionFields.length) reminders.push(`Session-sourced fields still passed as input (wire to auth session later): ${sessionFields.join(', ')}`);
-    reminders.push(`Navigation is manual: to expose the screen, add a route file under app/ (expo-router) that renders ${f.featureCamel}Screen.`);
+    reminders.push(`Navigation (backend-only runs): expose the screen with a route file under app/ (expo-router) rendering ${f.feature}Screen from presentation/screens/. Full/design-mode runs: the design lane registers navigation instead — see DESIGN.md §5.`);
     console.log('\nReminders:');
     for (const reminder of reminders) console.log(`  - ${reminder}`);
 
