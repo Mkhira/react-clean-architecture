@@ -1,6 +1,7 @@
 ---
 name: react-clean-architecture
-description: Scaffold a clean-architecture feature in src/features for the zatcaReact app —
+description: >-
+  Scaffold a clean-architecture feature in src/features for the zatcaReact app —
   three modes: full feature (backend + Figma design), backend only, or design only. Backend
   generates dtos, endpoints, mappers, service, repository, entities, interfaces, errors,
   use cases, react-query presentation starter, translations, Jest tests, and registers
