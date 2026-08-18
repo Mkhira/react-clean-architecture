@@ -1,169 +1,181 @@
 # react-clean-architecture
 
-An [Agent Skill](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview)
-for Claude Code that scaffolds complete clean-architecture features in the **zatcaReact**
-React Native (Expo) app — from a curl paste, a sample response, and a user story.
+> An [Agent Skill](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview) that scaffolds **complete clean-architecture features** in a React Native (Expo) app from a single curl paste — and builds their **pixel-accurate screens from Figma**, verified live on the iOS simulator.
 
-Give it an endpoint and it generates the entire stack, registers everything, tests it, and
-audits itself:
+![version](https://img.shields.io/badge/version-1.5.0-blue) ![tests](https://img.shields.io/badge/tests-106%20passing-brightgreen) ![deps](https://img.shields.io/badge/dependencies-zero-lightgrey) ![node](https://img.shields.io/badge/node-%E2%89%A518-339933) ![license](https://img.shields.io/badge/license-MIT-yellow)
+
+Works with **Claude Code**, **Cursor**, **OpenAI Codex CLI**, and any agent that reads `AGENTS.md` / Markdown skills. One [install script](#install), three tools.
+
+---
+
+## What it does
+
+Paste a curl. The skill interviews you (one question per message), writes a small `feature-spec.json`, and then **deterministic Node scripts** — not the LLM — generate every file, wire the DI container, i18n, react-query keys, config and env files, and audit the result against a TypeScript baseline and Jest.
 
 ```
 src/features/<Feature>/
-├── data/         dtos · endpoints · mappers · service · repository
-├── domain/       entities · errors · IRepositories · IServices · use cases
-├── presentation/ starter screen + controller · styles · translations (en/ar)
-└── test/         mapper + use-case Jest suites
+├── data/          dtos · endpoints · mappers · service · repository
+├── domain/        entities · errors · IRepositories · IServices · use cases
+├── presentation/  screens + controllers · styles · queries · translations (en/ar)
+├── test/          mapper + use-case Jest suites
+└── feature-spec.json   (sanitized, persisted — powers append/remove/rename/migrate)
 ```
 
-plus tsyringe DI registration (`tokens.ts` + `container.ts`), i18next registration
-(`merger.ts` featureTranslations), react-query keys (`data/services/keys.ts`),
-`AppConfig`/`ConfigService` fields, and all six `.env` files. The design lane
-([DESIGN.md](DESIGN.md)) builds the feature's real screens from Figma and verifies
-them on the iOS simulator.
+### Why script-driven?
 
-## Why it's script-driven
+**Accuracy and low token usage.** The LLM hand-writes only the spec and the use-case business rules. Everything mechanical is done by dependency-free Node scripts whose code never enters the context window — only their compact output does. Generation is idempotent (anchor comments), never overwrites, and refuses bad specs up front.
 
-**Low token usage + accuracy.** Claude hand-writes only a small `feature-spec.json` and the
-use-case business rules. Deterministic Node scripts (zero npm dependencies) generate every
-file, patch the DI files idempotently via anchor comments, and audit the result — script code
-never enters the context window, only compact script output does.
+---
 
-| Script | Job |
-|---|---|
-| `scripts/parse-curl.js` | tolerant curl/Postman-paste → structured JSON |
-| `scripts/json-to-dto.js` | sample JSON → TypeScript DTO declarations |
-| `scripts/generate.js` | spec → every feature file (never overwrites; append via anchors) |
-| `scripts/register-di.js` | DI + i18n + config + env wiring, idempotent |
-| `scripts/audit.js` | tsc baseline diff · jest · structure/DI/env/secret checks |
-| `scripts/rollback.js` | manifest-scoped undo: dry-run plan, `--apply` deletes created files + git-restores patched ones |
-| `scripts/remove-feature.js` | delete a long-merged feature everywhere (dir + DI + i18n + config + env), spec-driven |
-| `scripts/rename-feature.js` | rename a feature across code/DI/i18n/config/env via its derived identifiers only |
-| `scripts/migrate-feature.js` | upgrade a feature to the current templates; merges hand-added error codes, preserves hand-written files |
+## The pipeline
 
-All scripts run on plain Node (stdlib only) and support `--help`. generate.js validates the
-spec up front (duplicate actions, unsupported methods, orphan path placeholders, incomplete
-request-field provenance, …) so a bad spec is refused instead of becoming broken TypeScript.
+```mermaid
+flowchart LR
+    A["curl paste"] --> B["parse-curl.js"]
+    B --> C["intake interview<br/>one question per message"]
+    C --> D["feature-spec.json"]
+    D --> E["generate.js<br/>all feature files"]
+    E --> F["hand-written<br/>use-case rules"]
+    F --> G["register-di.js<br/>DI · i18n · config · env"]
+    G --> H["audit.js<br/>tsc diff · jest · 20+ checks"]
+    H -->|pass| I["persisted spec<br/>append-ready"]
+    H -->|fail| F
+```
+
+### Three modes
+
+| Mode | Backend slice | Figma screens | When |
+|---|---|---|---|
+| **Full** | ✅ | ✅ | new feature, endpoint + designs ready |
+| **Backend only** | ✅ | — | API first, screens later |
+| **Design only** | — | ✅ | screens for an existing/legacy feature |
+
+### The design lane (full / design modes)
+
+Screens are built by the agent from Figma links following strict rules ([DESIGN.md](DESIGN.md)) — theme tokens only, shared-component reuse gate, Arabic-first RTL — then **verified on the iOS simulator** in three passes before sign-off.
+
+```mermaid
+flowchart LR
+    A["Figma links +<br/>flow narration"] --> B["screen units +<br/>transition edges"]
+    B --> C["reuse gate<br/>element → shared component"]
+    C --> D["build screen<br/>controller · styles · i18n"]
+    D --> E["register navigation<br/>routes · deep links · service card"]
+    E --> F["verify on simulator<br/>AR light · AR dark · EN mirror"]
+    F -->|diffs| D
+    F -->|match| G["user checkpoint"]
+    G --> B
+```
+
+### Generated architecture (backend slice)
+
+```mermaid
+flowchart TB
+    subgraph presentation
+        SC["Screen"] --> CT["controller.ts"] --> Q["queries.ts<br/>react-query"]
+    end
+    subgraph domain
+        UC["UseCase<br/>business rules"] --> IR["IRepository"]
+        UC --> ER["typed errors<br/>Result&lt;T,E&gt;"]
+    end
+    subgraph data
+        RP["Repository"] --> SV["ApiService"] --> EP["endpoints"]
+        SV --> MP["mapper<br/>DTO → entity"]
+    end
+    Q --> UC
+    IR -. tsyringe DI .-> RP
+```
+
+---
 
 ## Install
 
-Copy or symlink this directory into your skills folder:
+Clone, then run the installer for your tool:
 
 ```bash
-# user-level
-ln -s /path/to/react-clean-architecture ~/.claude/skills/react-clean-architecture
-# or project-level
-ln -s /path/to/react-clean-architecture <repo>/.claude/skills/react-clean-architecture
+git clone https://github.com/Mkhira/react-clean-architecture.git
+cd react-clean-architecture
 ```
 
-## Usage
+| Tool | Command | What it does |
+|---|---|---|
+| **Claude Code** (user-wide) | `./install.sh claude` | symlink into `~/.claude/skills/` |
+| **Claude Code** (one project) | `./install.sh claude --project /path/to/app` | symlink into `<app>/.claude/skills/` |
+| **Cursor** | `./install.sh cursor --project /path/to/app` | copies the skill into `<app>/.cursor/skills/` + adds a `.cursor/rules/*.mdc` rule that routes feature-scaffolding requests to `SKILL.md` |
+| **Codex CLI** | `./install.sh codex --project /path/to/app` | copies the skill into `<app>/.agent-skills/` + appends a routed section to the project's `AGENTS.md` |
+| Any `AGENTS.md` agent | `./install.sh agents --project /path/to/app` | same as codex — the `AGENTS.md` convention is tool-agnostic |
 
-In Claude Code, inside the zatcaReact repo:
+Re-running is safe: symlinks are refreshed, copies are replaced, and the `AGENTS.md` block is updated between markers instead of duplicated.
 
-> Create a TaxValidation feature from this curl: …
+> **Manual install** is just as valid: put this folder wherever your tool discovers skills and make sure the agent reads [SKILL.md](SKILL.md) when the user asks to scaffold a feature. `SKILL.md` carries standard Agent-Skills frontmatter (`name`, `description`) so any compatible runtime can index it.
 
-Claude walks you through: endpoint intake (curl or guided) → three confirmation tables
-(headers / request-field provenance / status enum) → generation → DI registration → audit.
-See [SKILL.md](SKILL.md) for the exact flow, [SPEC_FORMAT.md](SPEC_FORMAT.md) for the spec
-schema, and [AUDIT.md](AUDIT.md) for every audit check.
+### Usage
 
-Adding an endpoint to a feature the skill created earlier is automatic (**append mode** —
-anchors + the persisted sanitized `feature-spec.json` give it full prior context).
+Inside the target app repo, ask your agent:
+
+> Create a **TaxValidation** feature from this curl: `curl -X POST https://…`
+
+or for screens only:
+
+> `/react-clean-architecture` I need to append on src/features/TaxStampValidation — design mode only
+
+The agent walks the checklist in [SKILL.md](SKILL.md): intake → confirmation tables → generate → register → audit → (design lane) → final report. Appending an endpoint or a screen to a feature the skill built earlier is automatic — the persisted spec provides full prior context, no re-asking.
+
+---
+
+## Documentation map
+
+| Doc | Contents |
+|---|---|
+| [SKILL.md](SKILL.md) | the agent's entry point — full workflow, progress checklist, intake protocol, append mode |
+| [DESIGN.md](DESIGN.md) | design lane: Figma → screens → simulator verification loop, RTL ground rules, navigation registration |
+| [SPEC_FORMAT.md](SPEC_FORMAT.md) | `feature-spec.json` schema + collision rules |
+| [AUDIT.md](AUDIT.md) | every audit check and how to fix each failure |
+| [COMPONENTS.md](COMPONENTS.md) | shared-components dictionary (props, variants, gotchas) used by the reuse gate |
+| [TOKEN_MAP.md](TOKEN_MAP.md) | Figma px/hex/variables → theme token mapping |
+| [CHANGELOG.md](CHANGELOG.md) | version history |
+| [examples/](examples/) | filled spec + full expected output tree |
+| [evals/](evals/) | end-to-end eval scenarios against a real repo copy |
+
+## Scripts reference
+
+| Script | Job |
+|---|---|
+| `scripts/parse-curl.js` | tolerant curl/Postman paste → structured JSON |
+| `scripts/json-to-dto.js` | sample JSON → TypeScript DTO declarations |
+| `scripts/generate.js` | spec → every feature file (validates spec; never overwrites; append via anchors) |
+| `scripts/register-di.js` | DI + i18n + config + 6 env files, idempotent |
+| `scripts/audit.js` | tsc-baseline diff · jest · structure/DI/env/secret checks (`--baseline`, `--persist-spec`) |
+| `scripts/rollback.js` | manifest-scoped undo — dry-run plan, `--apply` to execute |
+| `scripts/remove-feature.js` | delete a merged feature everywhere (dir + DI + i18n + config + env) |
+| `scripts/rename-feature.js` | rename across code/DI/i18n/config/env via derived identifiers only |
+| `scripts/migrate-feature.js` | upgrade machine-owned files to current templates; hand-written code preserved |
+
+All scripts run on plain Node ≥ 18 (stdlib only) and support `--help`.
 
 ## Testing the skill itself
 
-The skill ships with its own suite (83 tests) built on Node's built-in runner — still zero
-dependencies:
+106 tests on Node's built-in runner — still zero dependencies:
 
 ```bash
 node --test tests/*.test.js
 ```
 
-- `tests/parse-curl.test.js` / `tests/json-to-dto.test.js` — unit tests for the parsers
-  (curl/Postman shapes, quotes/continuations, multipart, overrides, merged array items, …).
-- `tests/generate.test.js` — scenario tests against temp fixture repos: create/append modes,
-  never-overwrite, anchors, external transport helpers, session-header exclusion, statusEnum
-  TODO, device provenance, pre-skill fallback, mixed-host ctor detection.
-- `tests/register-di.test.js` — anchor planting, DI/i18n/config wiring, 6-file env policy,
-  idempotency, token-collision refusal, internal/BFF reuse.
-- `tests/audit.test.js` — every audit check driven to both PASS and FAIL, spec sanitization,
-  persist-only-on-PASS.
-
-The fixture repos in `tests/helpers.js` mirror the real app files' shapes, so the scripts'
-regexes are exercised against realistic targets. The tsc-diff and jest audit steps are covered
-by the eval scenarios (`evals/`) against a real repo copy rather than by these unit tests.
+Unit suites cover the parsers, generation scenarios (create/append/never-overwrite/anchors), DI wiring idempotency and collision refusal, every audit check driven to PASS and FAIL, lifecycle scripts, plus aggressive/hostile-input suites. The fixture repos in `tests/helpers.js` mirror the real app files, so the scripts' regexes hit realistic targets. `evals/` covers the tsc-diff and jest steps end-to-end.
 
 ## Requirements
 
-- The zatcaReact repo (or a fork with the same conventions: tsyringe `TOKENS`/`TokenRegistry`,
-  `Result<T, E>`, `AppError`-style typed errors, `IHttpClient`, i18next `featureTranslations`,
-  `@core`/`@features`/`@shared` path aliases, jest-expo).
-- Node ≥ 18. No npm installs needed by the skill itself.
+- A repo following the zatcaReact conventions: tsyringe `TOKENS`/`TokenRegistry`, `Result<T, E>`, `AppError`-style typed errors, `IHttpClient`, i18next `featureTranslations`, `@core`/`@features`/`@shared` path aliases, jest-expo.
+- Node ≥ 18. The design lane additionally needs the Figma MCP server and a booted iOS simulator.
 
 ## Secret handling
 
-Real env values are written only to `.env` + `.env.development`. `.env.example`, `.env.staging`,
-`.env.preprod`, `.env.production` get empty placeholders (they are committed). The persisted
-per-feature spec is sanitized (`<env:KEY>` references). The audit fails on a real-looking value
-in `.env.example` and on raw secrets inside generated code. Session/Bearer headers are never
-emitted — the HttpClient auth layer owns them.
+Real env values land only in `.env` + `.env.development`; the committed env files get placeholders. Persisted specs are sanitized (`<env:KEY>`). The audit fails on real-looking values in `.env.example` or raw secrets in generated code. Session/Bearer headers are never emitted — the HttpClient auth layer owns them, and runtime tokens (curl execution, simulator login) never touch a file.
 
 ## Out of scope
 
 - Upload/multipart endpoints (use `IHttpClient.upload()` manually)
-- Navigation wiring (expo-router route files are added by hand)
+- Backend-only mode leaves expo-router wiring to you (full/design modes register navigation automatically)
 - Removing/renaming/migrating **pre-skill** features (no persisted spec — manual)
-
-## Version
-
-**1.4.0** — intake redesigned to the owner's confirmed flow:
-- response body is no longer a question: the skill EXECUTES the pasted curl and captures the
-  live response (GET immediately; POST/PUT/DELETE after explicit confirmation); sample-paste /
-  "none" remain only as fallbacks when execution fails
-- user story asked ONCE per run (write or skip) after all curls are in — in multi mode its
-  rules are mapped onto each endpoint's use case
-- multi mode: "next curl, or done?" after every capture; summary table on "done"
-
-**1.3.1**
-- intake protocol hardened (live-run finding): the Step 2 question order is fixed and
-  unconditional — "single or multiple endpoints?" first, alone; then the curl; then response
-  body; then user story — ONE question per message, never bundled, regardless of Step 1's
-  folder/mode outcome
-
-**1.3.0**
-- generated tests live in `test/` (was `__tests__/`) — pre-1.3.0 features keep their existing
-  `__tests__/` dir automatically (append/audit/migrate detect it)
-- the `@shared/components` barrel mock is emitted in BOTH test templates unconditionally —
-  shared utils (dateFormat, regex, digitNormalization…) pull the barrel and crash jest otherwise
-- SKILL.md final report notes the expo-router typed-routes caveat (`as Href` until the next
-  `expo start`)
-
-**1.2.1**
-- app-host transport follows the HttpClient mapper-config convention (live-test finding):
-  `{ mapper: <Action>Mapper.toDomain }` with the domain type as the generic; use-case catch
-  surfaces the API envelope's status description; controller logs errors visibly
-
-**1.2.0**
-- feature lifecycle: `remove-feature.js` (full unwire), `rename-feature.js`
-  (derived-identifier-safe), `migrate-feature.js` (template upgrades with error-code merge,
-  hand-written files preserved)
-- deep core review fixes: POST/PUT with path/query params now generates consistent
-  service/repository/interface signatures; non-nullable nested objects map directly (no
-  contradictory `: null` fallback); GET/DELETE with a body and colliding input names are
-  rejected at validation time
-- test suite grown to 83
-
-**1.1.0**
-- `rollback.js`: deterministic manifest-scoped undo (register-di edits now recorded in the
-  manifest so DI/i18n/config/env patches are restorable too)
-- spec validation in generate.js: duplicate actions, unsupported methods, orphan `{placeholders}`,
-  provenance/sample mismatches, empty statusEnum — refused with clear messages
-- persisted specs stamped with `skillVersion` for future template migrations
-- json-to-dto: `[null, {…}]` arrays infer from the first non-null item
-- audit tolerates a corrupt tsc baseline file
-- test suite grown to 72 (aggressive/hostile-input scenarios, rollback, mis-ordered runs)
-
-**1.0.0** — initial release: create + append modes, app/external/mixed transports, curl parsing,
-DTO inference, DI/i18n/config/env wiring, audit with tsc-baseline diff + jest, 4 eval scenarios.
 
 ## License
 
