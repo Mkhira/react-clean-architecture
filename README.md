@@ -205,7 +205,7 @@ The agent walks the checklist in [SKILL.md](skills/react-clean-architecture/SKIL
 | `scripts/json-to-dto.js` | sample JSON → TypeScript DTO declarations |
 | `scripts/generate.js` | spec → every feature file (validates spec; never overwrites; append via anchors) |
 | `scripts/register-di.js` | DI + i18n + config + 6 env files, idempotent |
-| `scripts/audit.js` | tsc-baseline diff · jest · structure/DI/env/secret checks (`--baseline`, `--persist-spec`) |
+| `scripts/audit.js` | tsc-baseline diff · jest · arch-boundaries · structure/DI/env/secret checks (`--baseline`, `--persist-spec`) |
 | `scripts/rollback.js` | manifest-scoped undo — dry-run plan, `--apply` to execute |
 | `scripts/setup-test-infra.js` | auto-installs `@testing-library/react-native`, creates/wires `jest.setup.js` (`--check` for report-only) |
 | `scripts/check-components-md.js` | COMPONENTS.md drift detector — DRIFT/STALE vs `src/shared/components` (`--strict`) |
