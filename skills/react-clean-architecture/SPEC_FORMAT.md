@@ -71,7 +71,7 @@ One entry per request-body field:
 | Source | Generated code |
 |---|---|
 | `"input"` | use-case input field (camelCased) |
-| `"device"` | `getDeviceInfo()` via the repository's `getDeviceMetadata()` (id/name/os/osVersion/language matched by field-name suffix) |
+| `"device"` | the SERVICE's `getDeviceMetadata()` (backed by the DI-registered `TaxpayerAuthDeviceContextService`, `Platform.Version`, and the stored app language; id/name/os/osVersion/language matched by field-name suffix) |
 | `"timestamp"` | `new Date().toISOString().replace(/\.\d{3}Z$/, 'Z')` at call time |
 | `{ "constant": X }` | the literal `X` |
 | `"session"` | input field + `// TODO: from auth session` |

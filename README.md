@@ -2,7 +2,7 @@
 
 > An [Agent Skill](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview) that scaffolds **complete clean-architecture features** in a React Native (Expo) app from a single curl paste — and builds their **pixel-accurate screens from Figma**, verified live on the iOS simulator.
 
-![version](https://img.shields.io/badge/version-1.7.0-blue) ![tests](https://img.shields.io/badge/tests-127%20passing-brightgreen) ![deps](https://img.shields.io/badge/dependencies-zero-lightgrey) ![node](https://img.shields.io/badge/node-%E2%89%A518-339933) ![license](https://img.shields.io/badge/license-MIT-yellow)
+![version](https://img.shields.io/badge/version-1.8.0-blue) ![tests](https://img.shields.io/badge/tests-135%20passing-brightgreen) ![deps](https://img.shields.io/badge/dependencies-zero-lightgrey) ![node](https://img.shields.io/badge/node-%E2%89%A518-339933) ![license](https://img.shields.io/badge/license-MIT-yellow)
 
 Works with **Claude Code**, **Cursor**, **OpenAI Codex CLI**, and any agent that reads `AGENTS.md` / Markdown skills. One [install script](#install), three tools.
 
@@ -89,6 +89,12 @@ flowchart TB
     Q --> UC
     IR -. tsyringe DI .-> RP
 ```
+
+The dependency rule is **enforced, not aspirational**: `domain/` never imports `data/` (DTOs
+stay behind `mapper.toDTO` inside the service — interfaces take domain inputs), and the audit's
+FAIL-level `arch-boundaries` check blocks any hand-edit that crosses a layer. Use-case errors
+carry a real taxonomy (`AUTH_ERROR`, `TIMEOUT`, `VALIDATION_ERROR`, …) instead of collapsing
+every failure to `NETWORK_ERROR`.
 
 ---
 
@@ -211,7 +217,7 @@ Paths are relative to [`skills/react-clean-architecture/`](skills/react-clean-ar
 
 ## Testing the skill itself
 
-127 tests on Node's built-in runner — still zero dependencies:
+135 tests on Node's built-in runner — still zero dependencies:
 
 ```bash
 node --test skills/react-clean-architecture/tests/*.test.js

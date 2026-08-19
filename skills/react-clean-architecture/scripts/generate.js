@@ -428,7 +428,9 @@ function serviceMethodArgs(e) {
     // path params ALWAYS come through — the endpoint URL expression needs them
     // regardless of whether a body is present
     const args = e.pathParams.map((p) => `${camel(p.name)}: ${p.type || 'string'}`);
-    if (e.hasBody) args.push(`payload: ${e.requestDTO}`);
+    // domain input, NOT the transport DTO — IService lives in domain/ and must
+    // never import from data/ (the service converts via mapper.toDTO)
+    if (e.hasBody) args.push(`input: ${e.input}`);
     if (e.queryParams.length) {
         const queryFields = e.queryParams.map((p) => `${camel(p.name)}: ${p.type || 'string'}`).join('; ');
         args.push(`query: { ${queryFields} }`);
@@ -440,6 +442,51 @@ function endpointUrlExpr(f, e) {
     return e.pathParams.length
         ? `${f.FEATURE_SNAKE}_ENDPOINTS.${e.endpointKey}(${e.pathParams.map((p) => camel(p.name)).join(', ')})`
         : `${f.FEATURE_SNAKE}_ENDPOINTS.${e.endpointKey}`;
+}
+
+/**
+ * Body endpoints: the service (data layer) converts the domain input into the
+ * transport payload — the DTO never crosses into domain/IServices.
+ */
+function payloadBuildLines(e) {
+    if (!e.hasBody) return '';
+    const deviceLine = e.usesDevice ? `        const device = await this.getDeviceMetadata();\n` : '';
+    const deviceArg = e.usesDevice ? ', device' : '';
+    return `${deviceLine}        const payload = ${e.mapper}.toDTO(input${deviceArg});\n`;
+}
+
+/**
+ * Private device-metadata helper, emitted in the SERVICE class (it owns toDTO).
+ * Sources: the DI-registered TaxpayerAuthDeviceContextService (id/name/platform),
+ * react-native Platform (OS version), and the stored app language.
+ */
+function deviceMetadataHelper(f) {
+    return f.usesDevice
+        ? `
+    private async getDeviceMetadata(): Promise<DeviceMetadata> {
+        const context = await this.deviceContext.getContext();
+        const language = String((await getStoredLanguage()) ?? 'ar');
+
+        return {
+            id: context.deviceId,
+            name: context.deviceName,
+            os: context.devicePlatform,
+            osVersion: String(Platform.Version),
+            language,
+        };
+    }
+`
+        : '';
+}
+
+/** Imports the device helper needs (service file + append mode). */
+function deviceHelperImports(dtoActionPascal) {
+    return [
+        `import { Platform } from 'react-native';`,
+        `import { getStoredLanguage } from '@core/localization/i18n';`,
+        `import type { ITaxpayerAuthDeviceContextService } from '@core/device/ITaxpayerAuthDeviceContextService';`,
+        `import type { DeviceMetadata } from '../dtos/${dtoActionPascal}DTO';`,
+    ];
 }
 
 function appServiceMethod(f, e) {
@@ -465,7 +512,7 @@ function appServiceMethod(f, e) {
     const body = e.hasResponse
         ? `        const response = ${call};\n        return response.data;`
         : `        ${call};`;
-    return `    async ${e.actionCamel}(${args}): Promise<${e.returnType}> {\n${body}\n    }`;
+    return `    async ${e.actionCamel}(${args}): Promise<${e.returnType}> {\n${payloadBuildLines(e)}${body}\n    }`;
 }
 
 /**
@@ -554,7 +601,7 @@ function externalServiceMethod(f, e) {
     return `    async ${e.actionCamel}(${args}): Promise<${e.returnType}> {
         const { ${destructured} } = this.configService.get();
 ${urlBuild}
-${requestLines.join('\n')}${resultSection}
+${payloadBuildLines(e)}${requestLines.join('\n')}${resultSection}
     }`;
 }
 
@@ -573,17 +620,21 @@ function serviceFile(f) {
     if (f.hasExternal) imports.push(`import { ${f.errorFactory} } from '../../domain/errors/${f.errorType}';`);
     for (const e of f.endpoints) {
         // the ResponseDTO is only referenced by external methods (parseExternalJson);
-        // app-host methods map inside the HttpClient config, so they need only
-        // the entity + mapper
-        const dtoNames = [
-            e.hasBody ? e.requestDTO : null,
-            e.hasResponse && e.hostType === 'external' ? e.responseDTO : null,
-        ].filter(Boolean);
-        if (dtoNames.length) imports.push(`import type { ${dtoNames.join(', ')} } from '../dtos/${e.ActionPascal}DTO';`);
-        if (e.hasResponse) {
-            imports.push(`import type { ${e.entity} } from '../../domain/entities/${e.entity}';`);
-            imports.push(`import { ${e.mapper} } from '../mappers/${e.mapper}';`);
+        // app-host methods map inside the HttpClient config. The RequestDTO
+        // stays internal to mapper.toDTO — the service receives the domain input
+        if (e.hasResponse && e.hostType === 'external') {
+            imports.push(`import type { ${e.responseDTO} } from '../dtos/${e.ActionPascal}DTO';`);
         }
+        const entityNames = [
+            e.hasResponse ? e.entity : null,
+            e.hasBody && e.inputFields.length ? e.input : null,
+        ].filter(Boolean);
+        if (entityNames.length) imports.push(`import type { ${entityNames.join(', ')} } from '../../domain/entities/${e.entity}';`);
+        if (e.hasResponse || e.hasBody) imports.push(`import { ${e.mapper} } from '../mappers/${e.mapper}';`);
+    }
+    if (f.usesDevice) {
+        imports.push(...deviceHelperImports(f.endpoints.find((e) => e.usesDevice).ActionPascal));
+        ctorParams.push('private readonly deviceContext: ITaxpayerAuthDeviceContextService');
     }
 
     const helpers = f.hasExternal ? `${externalServiceHelpers(f)}\n\n` : '';
@@ -592,7 +643,7 @@ function serviceFile(f) {
 
 export class ${f.serviceClass} implements ${f.serviceInterface} {
     constructor(${ctorParams.length ? `\n        ${ctorParams.join(',\n        ')},\n    ` : ''}) {}
-
+${deviceMetadataHelper(f)}
 ${helpers}${methods.join('\n\n')}
 
     // <create-feature:methods>
@@ -624,9 +675,13 @@ function mockServiceFile(f) {
     for (const e of f.endpoints) {
         if (e.hasResponse) {
             imports.push(`import type { ${e.responseDTO} } from '../dtos/${e.ActionPascal}DTO';`);
-            imports.push(`import type { ${e.entity} } from '../../domain/entities/${e.entity}';`);
             imports.push(`import { ${e.mapper} } from '../mappers/${e.mapper}';`);
         }
+        const entityNames = [
+            e.hasResponse ? e.entity : null,
+            e.hasBody && e.inputFields.length ? e.input : null,
+        ].filter(Boolean);
+        if (entityNames.length) imports.push(`import type { ${entityNames.join(', ')} } from '../../domain/entities/${e.entity}';`);
     }
     const samples = f.endpoints
         .filter((e) => e.hasResponse)
@@ -661,23 +716,16 @@ ${f.endpoints.map((e) => mockServiceMethod(f, e)).join('\n\n')}
 
 function repositoryMethod(f, e) {
     const inputArg = e.inputFields.length ? `input: ${e.input}` : '';
-    // mirror serviceMethodArgs exactly: path params, then payload, then query
+    // mirror serviceMethodArgs exactly: path params, then the domain input,
+    // then query — the DTO conversion lives in the service, not here
     const callArgs = [
         ...e.pathParams.map((p) => `input.${camel(p.name)}`),
-        ...(e.hasBody ? ['payload'] : []),
+        ...(e.hasBody ? ['input'] : []),
         ...(e.queryParams.length
             ? [`{ ${e.queryParams.map((p) => `${camel(p.name)}: input.${camel(p.name)}`).join(', ')} }`]
             : []),
     ].join(', ');
 
-    if (e.hasBody) {
-        const deviceLine = e.usesDevice ? `        const device = await this.getDeviceMetadata();\n` : '';
-        const deviceArg = e.usesDevice ? ', device' : '';
-        return `    async ${e.actionCamel}(${inputArg}): Promise<${e.returnType}> {
-${deviceLine}        const payload = ${e.mapper}.toDTO(input${deviceArg});
-        return this.apiService.${e.actionCamel}(${callArgs});
-    }`;
-    }
     return `    async ${e.actionCamel}(${inputArg}): Promise<${e.returnType}> {
         return this.apiService.${e.actionCamel}(${callArgs});
     }`;
@@ -691,34 +739,13 @@ function repositoryFile(f) {
     for (const e of f.endpoints) {
         const names = [e.hasResponse ? e.entity : null, e.inputFields.length ? e.input : null].filter(Boolean);
         if (names.length) imports.push(`import type { ${names.join(', ')} } from '../../domain/entities/${e.entity}';`);
-        if (e.hasBody) imports.push(`import { ${e.mapper} } from '../mappers/${e.mapper}';`);
     }
-    if (f.usesDevice) {
-        imports.push(`import { getDeviceInfo } from '@shared/utils/deviceInfo/deviceInfo';`);
-        imports.push(`import type { DeviceMetadata } from '../dtos/${f.endpoints.find((e) => e.usesDevice).ActionPascal}DTO';`);
-    }
-
-    const deviceHelper = f.usesDevice
-        ? `
-    private async getDeviceMetadata(): Promise<DeviceMetadata> {
-        const deviceInfo = await getDeviceInfo();
-
-        return {
-            id: deviceInfo.deviceID,
-            name: deviceInfo.deviceName,
-            os: deviceInfo.platFrom,
-            osVersion: deviceInfo.osVersion,
-            language: deviceInfo.language,
-        };
-    }
-`
-        : '';
 
     return `${[...new Set(imports)].join('\n')}
 
 export class ${f.repositoryClass} implements ${f.repositoryInterface} {
     constructor(private readonly apiService: ${f.serviceInterface}) {}
-${deviceHelper}
+
 ${f.endpoints.map((e) => repositoryMethod(f, e)).join('\n\n')}
 
     // <create-feature:methods>
@@ -730,8 +757,9 @@ function serviceInterfaceFile(f) {
     const imports = [];
     const signatures = f.endpoints.map((e) => {
         const args = serviceMethodArgs(e).join(', ');
-        if (e.hasBody) imports.push(`import type { ${e.requestDTO} } from '../../data/dtos/${e.ActionPascal}DTO';`);
-        if (e.hasResponse) imports.push(`import type { ${e.entity} } from '../entities/${e.entity}';`);
+        // domain-only imports — the transport DTO never appears here
+        const names = [e.hasBody && e.inputFields.length ? e.input : null, e.hasResponse ? e.entity : null].filter(Boolean);
+        if (names.length) imports.push(`import type { ${names.join(', ')} } from '../entities/${e.entity}';`);
         return `    ${e.actionCamel}(${args}): Promise<${e.returnType}>;`;
     });
     return `${[...new Set(imports)].join('\n')}
@@ -769,6 +797,8 @@ export const ${f.errorCodeValues} = [
     'HTTP_ERROR',
     'PARSE_ERROR',
     'VALIDATION_ERROR',
+    'AUTH_ERROR',
+    'TIMEOUT',
 ] as const;
 
 export type ${f.errorCodes} = (typeof ${f.errorCodeValues})[number];
@@ -829,9 +859,22 @@ ${callLine}
             if (${f.errorGuard}(error)) {
                 return Result.err(error);
             }
-            // app-host rejections carry the API envelope — surface its description
-            const description = (error as { header?: { status?: { description?: string } } })
-                ?.header?.status?.description;
+            // classify the transport failure instead of collapsing everything to
+            // NETWORK_ERROR: axios rejections carry response.status / code, and
+            // app-host envelope rejections carry header.status.description
+            const transport = error as {
+                response?: { status?: number };
+                code?: string;
+                header?: { status?: { description?: string } };
+            };
+            const httpStatus = transport?.response?.status;
+            if (httpStatus === 401 || httpStatus === 403) {
+                return Result.err(${f.errorFactory}('AUTH_ERROR', '${e.actionCamel} unauthorized', error));
+            }
+            if (transport?.code === 'ECONNABORTED' || transport?.code === 'ETIMEDOUT') {
+                return Result.err(${f.errorFactory}('TIMEOUT', '${e.actionCamel} timed out', error));
+            }
+            const description = transport?.header?.status?.description;
             return Result.err(${f.errorFactory}('NETWORK_ERROR', description || '${e.actionCamel} failed', error));
         }
     }
@@ -1250,6 +1293,34 @@ describe('${e.useCase}', () => {
             expect(outcome.error.code).toBe('NETWORK_ERROR');
         }
     });
+
+    it('classifies a 401 rejection as AUTH_ERROR', async () => {
+        const repository = makeRepository({
+            ${e.actionCamel}: jest.fn().mockRejectedValue({ response: { status: 401 } }),
+        } as Partial<${f.repositoryInterface}>);
+        const useCase = new ${e.useCase}(repository);
+
+        const outcome = await useCase.execute(${executeArg});
+
+        expect(Result.isErr(outcome)).toBe(true);
+        if (Result.isErr(outcome)) {
+            expect(outcome.error.code).toBe('AUTH_ERROR');
+        }
+    });
+
+    it('classifies an aborted request as TIMEOUT', async () => {
+        const repository = makeRepository({
+            ${e.actionCamel}: jest.fn().mockRejectedValue({ code: 'ECONNABORTED' }),
+        } as Partial<${f.repositoryInterface}>);
+        const useCase = new ${e.useCase}(repository);
+
+        const outcome = await useCase.execute(${executeArg});
+
+        expect(Result.isErr(outcome)).toBe(true);
+        if (Result.isErr(outcome)) {
+            expect(outcome.error.code).toBe('TIMEOUT');
+        }
+    });
 ${rulesTodo}});
 `;
 }
@@ -1338,14 +1409,17 @@ function ensureImports(content, importLines) {
 
 function serviceEndpointImports(f, e) {
     const imports = [];
-    const dtoNames = [
-        e.hasBody ? e.requestDTO : null,
-        e.hasResponse && e.hostType === 'external' ? e.responseDTO : null,
+    if (e.hasResponse && e.hostType === 'external') {
+        imports.push(`import type { ${e.responseDTO} } from '../dtos/${e.ActionPascal}DTO';`);
+    }
+    const entityNames = [
+        e.hasResponse ? e.entity : null,
+        e.hasBody && e.inputFields.length ? e.input : null,
     ].filter(Boolean);
-    if (dtoNames.length) imports.push(`import type { ${dtoNames.join(', ')} } from '../dtos/${e.ActionPascal}DTO';`);
-    if (e.hasResponse) {
-        imports.push(`import type { ${e.entity} } from '../../domain/entities/${e.entity}';`);
-        imports.push(`import { ${e.mapper} } from '../mappers/${e.mapper}';`);
+    if (entityNames.length) imports.push(`import type { ${entityNames.join(', ')} } from '../../domain/entities/${e.entity}';`);
+    if (e.hasResponse || e.hasBody) imports.push(`import { ${e.mapper} } from '../mappers/${e.mapper}';`);
+    if (e.usesDevice) {
+        imports.push(...deviceHelperImports(e.ActionPascal));
     }
     if (e.hostType === 'external') {
         imports.push(`import { ${f.errorFactory} } from '../../domain/errors/${f.errorType}';`);
@@ -1357,15 +1431,15 @@ function repositoryEndpointImports(f, e) {
     const imports = [];
     const names = [e.hasResponse ? e.entity : null, e.inputFields.length ? e.input : null].filter(Boolean);
     if (names.length) imports.push(`import type { ${names.join(', ')} } from '../../domain/entities/${e.entity}';`);
-    if (e.hasBody) imports.push(`import { ${e.mapper} } from '../mappers/${e.mapper}';`);
     return imports;
 }
 
 function interfaceEndpointImports(f, e, forService) {
     const imports = [];
     if (forService) {
-        if (e.hasBody) imports.push(`import type { ${e.requestDTO} } from '../../data/dtos/${e.ActionPascal}DTO';`);
-        if (e.hasResponse) imports.push(`import type { ${e.entity} } from '../entities/${e.entity}';`);
+        // domain-only imports — the transport DTO never appears in domain/IServices
+        const names = [e.hasBody && e.inputFields.length ? e.input : null, e.hasResponse ? e.entity : null].filter(Boolean);
+        if (names.length) imports.push(`import type { ${names.join(', ')} } from '../entities/${e.entity}';`);
     } else {
         const names = [e.inputFields.length ? e.input : null, e.hasResponse ? e.entity : null].filter(Boolean);
         if (names.length) imports.push(`import type { ${names.join(', ')} } from '../entities/${e.entity}';`);
@@ -1416,13 +1490,19 @@ function appendFeature(repo, spec, f, manifest) {
         return ${e.mapper}.toDomain(sample);
     }\n`;
                 },
-                imports: (e) => e.hasResponse
-                    ? [
-                        `import type { ${e.responseDTO} } from '../dtos/${e.ActionPascal}DTO';`,
-                        `import type { ${e.entity} } from '../../domain/entities/${e.entity}';`,
-                        `import { ${e.mapper} } from '../mappers/${e.mapper}';`,
-                    ]
-                    : [],
+                imports: (e) => {
+                    const mockImports = [];
+                    if (e.hasResponse) {
+                        mockImports.push(`import type { ${e.responseDTO} } from '../dtos/${e.ActionPascal}DTO';`);
+                        mockImports.push(`import { ${e.mapper} } from '../mappers/${e.mapper}';`);
+                    }
+                    const entityNames = [
+                        e.hasResponse ? e.entity : null,
+                        e.hasBody && e.inputFields.length ? e.input : null,
+                    ].filter(Boolean);
+                    if (entityNames.length) mockImports.push(`import type { ${entityNames.join(', ')} } from '../../domain/entities/${e.entity}';`);
+                    return mockImports;
+                },
             }]
             : []),
         {
@@ -1464,15 +1544,6 @@ function appendFeature(repo, spec, f, manifest) {
         }
     }
 
-    // a new device-using endpoint needs the repository's getDeviceMetadata helper
-    const repositoryFilePath = path.join(base, 'data', 'repositories', `${f.repositoryClass}.ts`);
-    if (f.usesDevice && fs.existsSync(repositoryFilePath)) {
-        const content = fs.readFileSync(repositoryFilePath, 'utf8');
-        if (!content.includes('getDeviceMetadata')) {
-            manifest.needsManual.push(`${path.relative(repo, repositoryFilePath)}: new endpoint uses device provenance but the repository lacks getDeviceMetadata() — add the private helper (mirror an existing skill-generated repository) + the getDeviceInfo/DeviceMetadata imports by hand`);
-        }
-    }
-
     // note ctor implications for mixed-host transitions — scripts cannot change
     // a ctor. Inspect the ctor PARAMETER LIST and helper DEFINITIONS, not the
     // whole file: the just-inserted method bodies mention configService /
@@ -1489,6 +1560,12 @@ function appendFeature(repo, spec, f, manifest) {
         }
         if (f.hasApp && !ctorParams.includes('httpClient')) {
             manifest.needsManual.push(`${path.relative(repo, serviceFilePath)}: new app-host endpoint but the ctor lacks httpClient — add "private readonly httpClient: IHttpClient" (+ its import and the DI registration argument) by hand`);
+        }
+        // a new device-using endpoint needs getDeviceMetadata() in the SERVICE
+        // class (the service owns toDTO since v1.8.0 — a pre-1.8.0 helper in the
+        // repository does not satisfy the appended method's this.getDeviceMetadata())
+        if (f.usesDevice && !content.includes('getDeviceMetadata')) {
+            manifest.needsManual.push(`${path.relative(repo, serviceFilePath)}: new endpoint uses device provenance but the service lacks getDeviceMetadata() — add the private helper (mirror a skill-generated service) + the ctor param "private readonly deviceContext: ITaxpayerAuthDeviceContextService" and its DI registration argument (resolve TOKENS.TaxpayerAuthDeviceContextService) by hand`);
         }
     }
 
@@ -1771,6 +1848,6 @@ if (require.main === module) {
     process.exit(main());
 }
 
-const SKILL_VERSION = '1.7.0';
+const SKILL_VERSION = '1.8.0';
 
 module.exports = { featureModel, buildFilePlan, testsDirName, validateSpec, pascal, camel, snakeUpper, kebab, queryKeyName, queryKeyValue, SKILL_VERSION };

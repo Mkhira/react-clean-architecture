@@ -37,6 +37,34 @@ describe('VerifyProductCodeUseCase', () => {
         }
     });
 
+    it('classifies a 401 rejection as AUTH_ERROR', async () => {
+        const repository = makeRepository({
+            verifyProductCode: jest.fn().mockRejectedValue({ response: { status: 401 } }),
+        } as Partial<IProductVerificationRepository>);
+        const useCase = new VerifyProductCodeUseCase(repository);
+
+        const outcome = await useCase.execute({ scanCode: "1234567890123456", scanCustomerId: 1 });
+
+        expect(Result.isErr(outcome)).toBe(true);
+        if (Result.isErr(outcome)) {
+            expect(outcome.error.code).toBe('AUTH_ERROR');
+        }
+    });
+
+    it('classifies an aborted request as TIMEOUT', async () => {
+        const repository = makeRepository({
+            verifyProductCode: jest.fn().mockRejectedValue({ code: 'ECONNABORTED' }),
+        } as Partial<IProductVerificationRepository>);
+        const useCase = new VerifyProductCodeUseCase(repository);
+
+        const outcome = await useCase.execute({ scanCode: "1234567890123456", scanCustomerId: 1 });
+
+        expect(Result.isErr(outcome)).toBe(true);
+        if (Result.isErr(outcome)) {
+            expect(outcome.error.code).toBe('TIMEOUT');
+        }
+    });
+
     // TODO(claude): add one test per business rule:
     //   - code required, exactly 16 characters after trimming
 });

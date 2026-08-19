@@ -310,6 +310,76 @@ function checkTscDiff(repo) {
     else pass('tsc-diff', `no new tsc errors (baseline ${baseline.length}, current ${current.length}; compared line-number-insensitively)`);
 }
 
+// ---- architecture boundaries (the clean-architecture dependency rule) ----
+
+/** Bare (non-relative) import prefixes the domain layer may use. */
+const DOMAIN_ALLOWED_BARE = ['@domain/', '@shared/'];
+
+/** Every import/export-from specifier in a TS file (handles multi-line imports). */
+function importSpecifiers(content) {
+    const specs = [];
+    for (const match of content.matchAll(/(?:^|\n)\s*(?:import|export)\b[^;]*?from\s*['"]([^'"]+)['"]/g)) specs.push(match[1]);
+    for (const match of content.matchAll(/(?:^|\n)\s*import\s*['"]([^'"]+)['"]/g)) specs.push(match[1]);
+    return specs;
+}
+
+function tsFilesUnder(dir) {
+    if (!fs.existsSync(dir)) return [];
+    const files = [];
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) files.push(...tsFilesUnder(full));
+        else if (/\.tsx?$/.test(entry.name)) files.push(full);
+    }
+    return files;
+}
+
+/**
+ * Dependency rule, hard-failing:
+ *   - domain/ may import ONLY within domain/ plus @domain/* and @shared/* —
+ *     never data/ (DTOs!), @core, react, expo, axios, react-query, navigation;
+ *   - data/ may never import from presentation/.
+ * This is what keeps transport DTOs out of domain/IServices permanently.
+ */
+function archBoundaryProblems(repo, feature) {
+    const base = path.join(repo, 'src', 'features', feature);
+    const domainDir = path.join(base, 'domain');
+    const problems = [];
+
+    for (const file of tsFilesUnder(domainDir)) {
+        for (const spec of importSpecifiers(fs.readFileSync(file, 'utf8'))) {
+            const relFile = path.relative(repo, file);
+            if (spec.startsWith('.')) {
+                const resolved = path.resolve(path.dirname(file), spec);
+                if (!(resolved + path.sep).startsWith(domainDir + path.sep) && resolved !== domainDir) {
+                    problems.push(`${relFile} imports '${spec}' (outside domain/)`);
+                }
+            } else if (!DOMAIN_ALLOWED_BARE.some((prefix) => spec.startsWith(prefix))) {
+                problems.push(`${relFile} imports '${spec}' (domain may only use ${DOMAIN_ALLOWED_BARE.join(', ')})`);
+            }
+        }
+    }
+
+    const presentationDir = path.join(base, 'presentation');
+    for (const file of tsFilesUnder(path.join(base, 'data'))) {
+        for (const spec of importSpecifiers(fs.readFileSync(file, 'utf8'))) {
+            if (!spec.startsWith('.')) continue;
+            const resolved = path.resolve(path.dirname(file), spec);
+            if ((resolved + path.sep).startsWith(presentationDir + path.sep) || resolved === presentationDir) {
+                problems.push(`${path.relative(repo, file)} imports '${spec}' (data must not import presentation)`);
+            }
+        }
+    }
+
+    return problems;
+}
+
+function checkArchBoundaries(repo, f) {
+    const problems = archBoundaryProblems(repo, f.feature);
+    if (problems.length) fail('arch-boundaries', problems.join('; '));
+    else pass('arch-boundaries', 'domain imports only domain/@domain/@shared; data never imports presentation');
+}
+
 /**
  * COMPONENTS.md drift: a shared component with no dictionary entry starves the
  * reuse gate (live finding: the List organism was missing → "paginated list"
@@ -451,6 +521,7 @@ function main() {
     checkDuplicatePaths(repo, spec, f);
     checkTodos(repo, f);
     checkReuseFirst(repo, f);
+    checkArchBoundaries(repo, f);
     checkComponentsMd(repo);
     if (!argv.includes('--skip-tsc')) checkTscDiff(repo);
     if (!argv.includes('--skip-jest')) checkJest(repo, f);
@@ -502,4 +573,4 @@ if (require.main === module) {
     process.exit(main());
 }
 
-module.exports = { normalizeTscError, freshTscErrors };
+module.exports = { normalizeTscError, freshTscErrors, importSpecifiers, archBoundaryProblems };

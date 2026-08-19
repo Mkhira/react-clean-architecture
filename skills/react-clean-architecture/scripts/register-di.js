@@ -216,6 +216,9 @@ function registrationBlock(f) {
     const serviceArgs = [];
     if (f.hasApp) serviceArgs.push('dependencyContainer.resolve<IHttpClient>(TOKENS.HttpClient)');
     if (f.hasExternal) serviceArgs.push('dependencyContainer.resolve<IConfigService>(TOKENS.ConfigService)');
+    // device provenance: the service's getDeviceMetadata() helper needs the
+    // app's device-context service (same arg order as the generated ctor)
+    if (f.usesDevice) serviceArgs.push('dependencyContainer.resolve(TOKENS.TaxpayerAuthDeviceContextService)');
 
     // mock lane (spec.mock): the MOCK service is what the container serves —
     // the swap back to the real service is a one-line factory change here

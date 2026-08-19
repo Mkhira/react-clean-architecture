@@ -21,9 +21,22 @@ export class VerifyProductCodeUseCase implements IUseCase<VerifyProductCodeInput
             if (isProductVerificationError(error)) {
                 return Result.err(error);
             }
-            // app-host rejections carry the API envelope — surface its description
-            const description = (error as { header?: { status?: { description?: string } } })
-                ?.header?.status?.description;
+            // classify the transport failure instead of collapsing everything to
+            // NETWORK_ERROR: axios rejections carry response.status / code, and
+            // app-host envelope rejections carry header.status.description
+            const transport = error as {
+                response?: { status?: number };
+                code?: string;
+                header?: { status?: { description?: string } };
+            };
+            const httpStatus = transport?.response?.status;
+            if (httpStatus === 401 || httpStatus === 403) {
+                return Result.err(createProductVerificationError('AUTH_ERROR', 'verifyProductCode unauthorized', error));
+            }
+            if (transport?.code === 'ECONNABORTED' || transport?.code === 'ETIMEDOUT') {
+                return Result.err(createProductVerificationError('TIMEOUT', 'verifyProductCode timed out', error));
+            }
+            const description = transport?.header?.status?.description;
             return Result.err(createProductVerificationError('NETWORK_ERROR', description || 'verifyProductCode failed', error));
         }
     }

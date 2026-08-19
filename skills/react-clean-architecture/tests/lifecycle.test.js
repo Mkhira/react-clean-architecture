@@ -31,16 +31,18 @@ test('CORE: POST with path AND query params — service/repo/interface signature
     runScript('generate.js', [writeSpec(makeTmpDir('s'), spec), '--repo', repo]);
 
     const service = read(repo, 'src/features/OrderTracking/data/services/OrderTrackingService.ts');
-    // external endpoint: url expression must receive the declared path param
-    assert.match(service, /async trackOrder\(orderId: string, payload: TrackOrderRequestDTO, query: \{ notify: string \}\)/);
+    // external endpoint: url expression must receive the declared path param;
+    // v1.8.0: the service takes the DOMAIN input and builds the payload itself
+    assert.match(service, /async trackOrder\(orderId: string, input: TrackOrderInput, query: \{ notify: string \}\)/);
+    assert.match(service, /const payload = TrackOrderMapper\.toDTO\(input\);/);
     assert.match(service, /ORDER_TRACKING_ENDPOINTS\.TRACK_ORDER\(orderId\)/);
-    assert.ok(!/\bquery\b(?![:\w])/.test('') , 'sanity');
 
     const repository = read(repo, 'src/features/OrderTracking/data/repositories/OrderTrackingRepository.ts');
-    assert.match(repository, /this\.apiService\.trackOrder\(input\.orderId, payload, \{ notify: input\.notify \}\)/);
+    assert.match(repository, /this\.apiService\.trackOrder\(input\.orderId, input, \{ notify: input\.notify \}\)/);
 
     const iface = read(repo, 'src/features/OrderTracking/domain/IServices/IOrderTrackingService.ts');
-    assert.match(iface, /trackOrder\(orderId: string, payload: TrackOrderRequestDTO, query: \{ notify: string \}\): Promise<TrackOrderResult>;/);
+    assert.match(iface, /trackOrder\(orderId: string, input: TrackOrderInput, query: \{ notify: string \}\): Promise<TrackOrderResult>;/);
+    assert.ok(!iface.includes('data/dtos'), 'domain interface must not import from data/');
 });
 
 test('CORE: app-host POST with query params passes axios params config', () => {

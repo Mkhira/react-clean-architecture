@@ -3,17 +3,31 @@ import type { IConfigService } from '@core/config/IConfigService';
 import type { IProductVerificationService } from '../../domain/IServices/IProductVerificationService';
 import { PRODUCT_VERIFICATION_ENDPOINTS } from '../endpoints/endpoints';
 import { createProductVerificationError } from '../../domain/errors/ProductVerificationError';
-import type { VerifyProductCodeRequestDTO, VerifyProductCodeResponseDTO } from '../dtos/VerifyProductCodeDTO';
-import type { VerifyProductCodeResult } from '../../domain/entities/VerifyProductCodeResult';
+import type { VerifyProductCodeResponseDTO } from '../dtos/VerifyProductCodeDTO';
+import type { VerifyProductCodeResult, VerifyProductCodeInput } from '../../domain/entities/VerifyProductCodeResult';
 import { VerifyProductCodeMapper } from '../mappers/VerifyProductCodeMapper';
 import type { GetScanHistoryResult } from '../../domain/entities/GetScanHistoryResult';
 import { GetScanHistoryMapper } from '../mappers/GetScanHistoryMapper';
+import { getDeviceInfo } from '@shared/utils/deviceInfo/deviceInfo';
+import type { DeviceMetadata } from '../dtos/VerifyProductCodeDTO';
 
 export class ProductVerificationService implements IProductVerificationService {
     constructor(
         private readonly httpClient: IHttpClient,
         private readonly configService: IConfigService,
     ) {}
+
+    private async getDeviceMetadata(): Promise<DeviceMetadata> {
+        const deviceInfo = await getDeviceInfo();
+
+        return {
+            id: deviceInfo.deviceID,
+            name: deviceInfo.deviceName,
+            os: deviceInfo.platFrom,
+            osVersion: deviceInfo.osVersion,
+            language: deviceInfo.language,
+        };
+    }
 
     private async requestExternal(
         action: string,
@@ -46,9 +60,11 @@ export class ProductVerificationService implements IProductVerificationService {
         }
     }
 
-    async verifyProductCode(payload: VerifyProductCodeRequestDTO): Promise<VerifyProductCodeResult> {
+    async verifyProductCode(input: VerifyProductCodeInput): Promise<VerifyProductCodeResult> {
         const { productVerificationBaseUrl, productVerificationClientId, productVerificationClientSecret } = this.configService.get();
         const url = `${productVerificationBaseUrl}${PRODUCT_VERIFICATION_ENDPOINTS.VERIFY_PRODUCT_CODE}`;
+        const device = await this.getDeviceMetadata();
+        const payload = VerifyProductCodeMapper.toDTO(input, device);
         const response = await this.requestExternal('verifyProductCode', url, {
             method: 'POST',
             headers: {

@@ -25,3 +25,5 @@ export const useGetScanHistoryQuery = (input: GetScanHistoryInput, options?: { e
         { enabled: options?.enabled ?? true }
     );
 };
+
+// <create-feature:queries>

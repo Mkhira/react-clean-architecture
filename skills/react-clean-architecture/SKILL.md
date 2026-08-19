@@ -304,8 +304,9 @@ transitions, verification, navigation registration — follows [DESIGN.md](DESIG
    `literal` (static, e.g. Content-Type) / `env` → `EXPO_PUBLIC_<FEATURE>_<KEY>` (credentials)
    / `session` (Bearer/session tokens — excluded from generated code; the HttpClient auth
    layer owns them).
-2. **Request-field provenance** — every request-body field → `input` / `device` (via
-   `getDeviceInfo()`) / `timestamp` / `constant` / `session` (input field + TODO comment).
+2. **Request-field provenance** — every request-body field → `input` / `device` (via the
+   service's `getDeviceMetadata()`) / `timestamp` / `constant` / `session` (input field +
+   TODO comment).
 3. **Status enum** — response has boolean/status flags? Ask "what are the possible result
    states?" → that exact union goes in the spec's `statusEnum`.
 
@@ -315,7 +316,7 @@ Before writing ANY helper (dates, location, device info, currency, digits, regex
 search `src/shared/utils/` → `src/shared/hooks/` → the feature's own `utils/`. Never duplicate
 an existing utility. Only if nothing fits: create it in the FEATURE's `presentation/utils/` —
 never silently add to `src/shared/utils`. The generated templates already import
-`getDeviceInfo`, `formatNumericGregorianDate`, `useResolve`, etc. — keep it that way in
+`formatNumericGregorianDate`, `useResolve`, `getStoredLanguage`, etc. — keep it that way in
 everything you hand-write. (`cleanString` stays mapper-local; that is the repo convention.)
 
 ## Step 5 — Generate, fill, register, audit

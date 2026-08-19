@@ -137,12 +137,18 @@ test('statusEnum: union type emitted, derivation left as an audited TODO', () =>
     assert.match(read(repo, 'src/features/OrderTracking/data/mappers/TrackOrderMapper.ts'), /TODO\(claude\): status derivation/);
 });
 
-test('device provenance: repository gains getDeviceMetadata + DeviceMetadata DTO', () => {
+test('device provenance: SERVICE gains getDeviceMetadata + DeviceMetadata DTO (v1.8.0: the service owns toDTO)', () => {
     const spec = baseSpec();
     spec.endpoints[0].requestSample.DeviceId = 'd1';
     spec.endpoints[0].requestFieldSources.DeviceId = 'device';
     const { repo } = generateInto(spec);
-    assert.match(read(repo, 'src/features/OrderTracking/data/repositories/OrderTrackingRepository.ts'), /getDeviceMetadata/);
+    const service = read(repo, 'src/features/OrderTracking/data/services/OrderTrackingService.ts');
+    assert.match(service, /getDeviceMetadata/);
+    assert.match(service, /const payload = TrackOrderMapper\.toDTO\(input, device\);/);
+    // the repository is a pure passthrough now — no device fetch, no DTO conversion
+    const repository = read(repo, 'src/features/OrderTracking/data/repositories/OrderTrackingRepository.ts');
+    assert.ok(!repository.includes('getDeviceMetadata'), 'repository must not fetch device metadata');
+    assert.ok(!repository.includes('toDTO'), 'repository must not convert to the transport DTO');
     assert.match(read(repo, 'src/features/OrderTracking/data/dtos/TrackOrderDTO.ts'), /export type DeviceMetadata/);
     assert.match(read(repo, 'src/features/OrderTracking/data/mappers/TrackOrderMapper.ts'), /DeviceId: device\.id,/);
 });
@@ -176,7 +182,10 @@ test('append mode: inserts at anchors with imports, idempotent on re-run', () =>
 
     const service = read(repo, 'src/features/OrderTracking/data/services/OrderTrackingService.ts');
     assert.match(service, /async cancelOrder\(/);
-    assert.match(service, /import type \{ CancelOrderRequestDTO \} from '\.\.\/dtos\/CancelOrderDTO';/);
+    // v1.8.0: the service receives the domain input and converts via the mapper
+    assert.match(service, /import type \{ CancelOrderInput \} from '\.\.\/\.\.\/domain\/entities\/CancelOrderResult';/);
+    assert.match(service, /import \{ CancelOrderMapper \} from '\.\.\/mappers\/CancelOrderMapper';/);
+    assert.ok(!service.includes('CancelOrderRequestDTO'), 'RequestDTO must stay inside the mapper');
     const iface = read(repo, 'src/features/OrderTracking/domain/IRepositories/IOrderTrackingRepository.ts');
     assert.match(iface, /cancelOrder\(input: CancelOrderInput\): Promise<void>;/);
 

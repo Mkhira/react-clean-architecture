@@ -1,5 +1,36 @@
 # Changelog
 
+## 1.8.0 — strict clean-architecture boundaries + error taxonomy
+
+Closing the two valid P0s (and one P1) from the external architecture review
+(2026-08-19): the domain layer imported the transport RequestDTO through
+`domain/IServices`, nothing enforced layer boundaries, and every unknown failure
+collapsed to `NETWORK_ERROR`.
+
+- **Domain purity (the review's P0)**: body-endpoint `IService` signatures now take the
+  DOMAIN input (`input: XInput`), not `payload: XRequestDTO` — `mapper.toDTO(input)` moved
+  from the repository into the SERVICE, so the transport DTO never crosses into `domain/`.
+  The repository is a pure passthrough. GET endpoints were already clean. The mock lane is
+  untouched (MockService implements the same interface, samples still flow through real
+  mappers).
+- **`arch-boundaries` audit check (FAIL-level)**: `domain/` may import only within
+  `domain/` plus `@domain/*`/`@shared/*` — never `data/`, `@core`, react, expo, axios,
+  react-query; `data/` may never import `presentation/`. Locks the fix in forever;
+  exported as `archBoundaryProblems` for reuse. Verified clean against the real
+  ApplicationStatus feature.
+- **Error taxonomy**: generated feature error codes gain `AUTH_ERROR` + `TIMEOUT`; the
+  use-case catch classifies axios rejections (401/403 → `AUTH_ERROR`, `ECONNABORTED`/
+  `ETIMEDOUT` → `TIMEOUT`) before the envelope-description `NETWORK_ERROR` fallback.
+  Generated use-case tests cover both classifications.
+- **Device provenance fixed for real** (latent since v1): the old template imported a
+  `getDeviceInfo` util that does not exist in the target repo — device features never
+  typechecked. The service now injects the DI-registered `TaxpayerAuthDeviceContextService`
+  (register-di passes it), plus `Platform.Version` and `getStoredLanguage()` for
+  osVersion/language. Verified end-to-end in the real repo: a scratch POST feature with
+  body + device + query + mock passed the FULL audit (tsc-diff clean, jest green).
+- `examples/expected-output/` regenerated; new suite `tests/arch-boundaries.test.js` —
+  **135 tests**.
+
 ## 1.7.0 — verification tools + infra automation
 
 Closing the three residual gaps from the 1.6.0 rating (user decisions 2026-08-19):

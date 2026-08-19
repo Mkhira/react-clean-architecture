@@ -36,4 +36,32 @@ describe('GetScanHistoryUseCase', () => {
             expect(outcome.error.code).toBe('NETWORK_ERROR');
         }
     });
+
+    it('classifies a 401 rejection as AUTH_ERROR', async () => {
+        const repository = makeRepository({
+            getScanHistory: jest.fn().mockRejectedValue({ response: { status: 401 } }),
+        } as Partial<IProductVerificationRepository>);
+        const useCase = new GetScanHistoryUseCase(repository);
+
+        const outcome = await useCase.execute({ from: 'value' });
+
+        expect(Result.isErr(outcome)).toBe(true);
+        if (Result.isErr(outcome)) {
+            expect(outcome.error.code).toBe('AUTH_ERROR');
+        }
+    });
+
+    it('classifies an aborted request as TIMEOUT', async () => {
+        const repository = makeRepository({
+            getScanHistory: jest.fn().mockRejectedValue({ code: 'ECONNABORTED' }),
+        } as Partial<IProductVerificationRepository>);
+        const useCase = new GetScanHistoryUseCase(repository);
+
+        const outcome = await useCase.execute({ from: 'value' });
+
+        expect(Result.isErr(outcome)).toBe(true);
+        if (Result.isErr(outcome)) {
+            expect(outcome.error.code).toBe('TIMEOUT');
+        }
+    });
 });
