@@ -18,7 +18,8 @@ Exit 0 = PASS (warnings allowed) · exit 1 = FAIL. Max **3 fix-cycles**, then st
 | `status-derivation` | FAIL | `TODO(claude): status derivation` still in a mapper — hand-write the flag→state mapping |
 | `todos` | WARN | Other `TODO(claude)` markers remain (skipped user story, session wiring) — fine to ship, listed so nothing is forgotten |
 | `reuse-first` | WARN | A generated/hand-written file re-declares a helper that already exists in `src/shared/utils` — import the shared one instead (`cleanString` is exempt: mapper-local by repo convention) |
-| `tsc-diff` | FAIL | `npx tsc --noEmit` compared against the baseline — only NEW errors fail. No baseline file → warns and treats all errors as new |
+| `components-md` | WARN | COMPONENTS.md drift: a `src/shared/components` component with no dictionary entry (DRIFT) or an entry matching no component (STALE) — write/fix the entry so the reuse gate stays complete (`node <skill>/scripts/check-components-md.js` for details) |
+| `tsc-diff` | FAIL | `npx tsc --noEmit` compared against the baseline — only NEW errors fail, matched by file+code+message (line/column shifts of baseline errors are ignored). No baseline file → warns and treats all errors as new |
 | `jest` | FAIL | `npx jest src/features/<Feature> --watchAll=false --passWithNoTests` — suites must be green; 0 tests ran → WARN |
 
 ## After PASS
@@ -40,5 +41,9 @@ Exit 0 = PASS (warnings allowed) · exit 1 = FAIL. Max **3 fix-cycles**, then st
 
 - Env placeholders still to fill (`.env.staging` / `.env.preprod` / `.env.production`).
 - Session-sourced request fields still passed as plain input (wire to the auth session later).
+- MOCK backend (spec.mock): the container serves the MockService — the swap steps once the
+  real API exists.
+- Render-test infra missing → run `node <skill>/scripts/setup-test-infra.js` (automatic
+  install of `@testing-library/react-native` + `jest.setup.js` wiring).
 - Navigation: backend-only runs add an expo-router route file under `app/` by hand; in
   full/design modes the design lane registers navigation instead (DESIGN.md §5).

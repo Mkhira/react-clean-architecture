@@ -3,7 +3,7 @@
  * generate.js — scaffold a clean-architecture feature from feature-spec.json.
  * Node stdlib only. Templates mirror the zatcaReact repo's VERIFIED patterns:
  * Result.ok/err, AppError-style typed error objects, ApiResponse `.data`,
- * useResolve controllers, cleanString/formatDateTimeDateMonthYear mappers.
+ * useResolve controllers, cleanString/formatNumericGregorianDate mappers.
  *
  * Usage:
  *   node generate.js <feature-spec.json> [--repo <path>]   (--repo defaults to cwd)
@@ -122,6 +122,11 @@ function featureModel(spec) {
         feature,
         featureCamel: camel(spec.feature),
         FEATURE_SNAKE: snakeUpper(spec.feature),
+        // mock backend lane (spec.mock: true) — the real API doesn't exist yet:
+        // a MockService is generated next to the real one and register-di.js
+        // registers IT in the container, with a swap comment for later
+        mock: spec.mock === true,
+        mockServiceClass: `${feature}MockService`,
         serviceClass: `${feature}Service`,
         repositoryClass: `${feature}Repository`,
         serviceInterface: `I${feature}Service`,
@@ -244,10 +249,10 @@ function mapperToDomainBody(f, e) {
     const helpers = [];
 
     const fieldExpr = (key, value, source, dotPath) => {
-        if (dateFields.includes(dotPath)) return `formatDateTimeDateMonthYear(${source}.${key})`;
+        if (dateFields.includes(dotPath)) return `formatNumericGregorianDate(${source}.${key})`;
         if (typeof value === 'string' || value === null) {
             const override = (e.typeOverrides ?? {})[dotPath] ?? '';
-            if (/date/.test(override)) return `formatDateTimeDateMonthYear(${source}.${key})`;
+            if (/date/.test(override)) return `formatNumericGregorianDate(${source}.${key})`;
             if (typeof value === 'string' || /string/.test(override)) return `cleanString(${source}.${key})`;
             return `${source}.${key}`;
         }
@@ -359,7 +364,7 @@ function mapperFile(f, e) {
     if (e.hasResponse) {
         const { body, helpers: mappingHelpers } = mapperToDomainBody(f, e);
         helpers = mappingHelpers;
-        needsDate = /formatDateTimeDateMonthYear\(/.test(body + mappingHelpers.join(''));
+        needsDate = /formatNumericGregorianDate\(/.test(body + mappingHelpers.join(''));
         needsClean = /cleanString\(/.test(body + mappingHelpers.join(''));
         // sub-mapper DTO types must be imported too
         for (const helper of mappingHelpers) {
@@ -388,7 +393,7 @@ function mapperFile(f, e) {
             `import type {\n    ${[...new Set(entityImports)].join(',\n    ')},\n} from '../../domain/entities/${e.entity}';`
         );
     }
-    if (needsDate) importLines.push(`import { formatDateTimeDateMonthYear } from '@shared/utils/dateFormat';`);
+    if (needsDate) importLines.push(`import { formatNumericGregorianDate } from '@shared/utils/dateFormat';`);
 
     const cleanHelper = needsClean
         ? `\nconst cleanString = (value: string | null | undefined): string | null => value?.trim() || null;\n`
@@ -589,6 +594,65 @@ export class ${f.serviceClass} implements ${f.serviceInterface} {
     constructor(${ctorParams.length ? `\n        ${ctorParams.join(',\n        ')},\n    ` : ''}) {}
 
 ${helpers}${methods.join('\n\n')}
+
+    // <create-feature:methods>
+}
+`;
+}
+
+/**
+ * Mock lane (spec.mock: true): one method per endpoint, same signature as the
+ * real service. DTO-level samples (the spec's responseSample) flow through the
+ * REAL mappers, so the domain layer stays fully exercised while the backend
+ * doesn't exist. Claude then enriches the sample catalog by hand to cover the
+ * story's filters/states (see SKILL.md Step 5.3).
+ */
+function mockServiceMethod(f, e) {
+    // underscore-prefix: the generated skeleton ignores its inputs — Claude
+    // renames them when the enriched mock starts filtering/paginating
+    const args = serviceMethodArgs(e).map((arg) => `_${arg}`).join(', ');
+    const body = e.hasResponse
+        ? `        await mockDelay();\n        return ${e.mapper}.toDomain(${e.endpointKey}_SAMPLE);`
+        : `        await mockDelay();`;
+    return `    async ${e.actionCamel}(${args}): Promise<${e.returnType}> {\n${body}\n    }`;
+}
+
+function mockServiceFile(f) {
+    const imports = [
+        `import type { ${f.serviceInterface} } from '../../domain/IServices/${f.serviceInterface}';`,
+    ];
+    for (const e of f.endpoints) {
+        if (e.hasResponse) {
+            imports.push(`import type { ${e.responseDTO} } from '../dtos/${e.ActionPascal}DTO';`);
+            imports.push(`import type { ${e.entity} } from '../../domain/entities/${e.entity}';`);
+            imports.push(`import { ${e.mapper} } from '../mappers/${e.mapper}';`);
+        }
+    }
+    const samples = f.endpoints
+        .filter((e) => e.hasResponse)
+        .map((e) => `const ${e.endpointKey}_SAMPLE: ${e.responseDTO} = ${JSON.stringify(e.responseSample, null, 4)};`);
+
+    return `${[...new Set(imports)].join('\n')}
+
+/**
+ * MOCK implementation of ${f.serviceInterface} — the real backend does not
+ * exist yet (spec.mock). DTO-level samples flow through the REAL mappers so
+ * DTOs, mappers, and entities stay exercised end-to-end.
+ *
+ * When the real API is live: in src/core/di/container.ts swap the
+ * TOKENS.${f.feature}Service registration back to ${f.serviceClass} (resolve its
+ * HttpClient/ConfigService dependencies like other features do), then delete
+ * this file.
+ *
+ * TODO(claude): enrich the sample catalog to cover the user story's filters,
+ * states, and pagination — a single sample item is a compile-time skeleton,
+ * not a usable mock.
+ */
+const MOCK_DELAY_MS = 400;
+const mockDelay = () => new Promise<void>((resolve) => setTimeout(resolve, MOCK_DELAY_MS));
+
+${samples.length ? samples.join('\n\n') + '\n\n' : ''}export class ${f.mockServiceClass} implements ${f.serviceInterface} {
+${f.endpoints.map((e) => mockServiceMethod(f, e)).join('\n\n')}
 
     // <create-feature:methods>
 }
@@ -797,7 +861,14 @@ function queryHookImports(f, e) {
 /** One GET endpoint's query hook (used by create's queriesFile AND append). */
 function queryHookSnippet(f, e) {
     const key = `QUERIES_KEYS.${queryKeyName(f, e)}`;
-    const cacheOption = e.cache ? `storeDuration: '${e.cache}'` : null;
+    // cache semantics (see SPEC_FORMAT.md): a duration → persistent device
+    // cache (useApiQuery storeDuration); "always-fresh" → kill even the
+    // app-wide 5-min in-memory staleTime so every mount/param-change refetches;
+    // null → no device cache, in-memory react-query defaults still apply.
+    const cacheOption =
+        e.cache === 'always-fresh' ? 'staleTime: 0'
+        : e.cache ? `storeDuration: '${e.cache}'`
+        : null;
     if (!e.inputFields.length) {
         const options = cacheOption ? `,\n        { ${cacheOption} }` : '';
         return `export const use${e.ActionPascal}Query = () => {
@@ -1042,7 +1113,7 @@ function mapperTestFile(f, e) {
         const name = camel(key);
         if (statusField && name === statusField) continue;
         if (dateFields.includes(key)) {
-            asserts.push(`        expect(${accessor}.${name}).toBe(formatDateTimeDateMonthYear(${sampleAccessor}.${quoteKey(key)}));`);
+            asserts.push(`        expect(${accessor}.${name}).toBe(formatNumericGregorianDate(${sampleAccessor}.${quoteKey(key)}));`);
             needsDateImport = true;
         } else if (typeof value === 'string') {
             asserts.push(`        expect(${accessor}.${name}).toBe(${JSON.stringify(expectedCleaned(value))});`);
@@ -1101,7 +1172,7 @@ ${dtoAsserts.join('\n')}
     }
 
     const imports = [`import { ${e.mapper} } from '../data/mappers/${e.mapper}';`];
-    if (needsDateImport) imports.push(`import { formatDateTimeDateMonthYear } from '@shared/utils/dateFormat';`);
+    if (needsDateImport) imports.push(`import { formatNumericGregorianDate } from '@shared/utils/dateFormat';`);
 
     // several shared utils (dateFormat, regex, …) import the @shared/components
     // barrel, which drags native-only modules into jest — mock it always; the
@@ -1200,6 +1271,9 @@ function buildFilePlan(spec, f, testsDir = 'test') {
     // feature-level files (create mode only)
     files.set(path.join(base, 'data', 'endpoints', 'endpoints.ts'), endpointsFile(f));
     files.set(path.join(base, 'data', 'services', `${f.serviceClass}.ts`), serviceFile(f));
+    if (f.mock) {
+        files.set(path.join(base, 'data', 'services', `${f.mockServiceClass}.ts`), mockServiceFile(f));
+    }
     files.set(path.join(base, 'data', 'repositories', `${f.repositoryClass}.ts`), repositoryFile(f));
     files.set(path.join(base, 'domain', 'IServices', `${f.serviceInterface}.ts`), serviceInterfaceFile(f));
     files.set(path.join(base, 'domain', 'IRepositories', `${f.repositoryInterface}.ts`), repositoryInterfaceFile(f));
@@ -1323,6 +1397,34 @@ function appendFeature(repo, spec, f, manifest) {
             text: (e) => repositoryMethod(f, e) + '\n',
             imports: (e) => repositoryEndpointImports(f, e),
         },
+        // mock lane: appended endpoints get a mock method too (skipped when the
+        // feature has no MockService on disk — targets missing files are reported)
+        ...(f.mock
+            ? [{
+                file: path.join(base, 'data', 'services', `${f.mockServiceClass}.ts`),
+                anchor: '// <create-feature:methods>',
+                // the anchor sits INSIDE the class body, so the appended method
+                // is self-contained: the sample lives as a local const, not at
+                // module scope like create-mode samples
+                text: (e) => {
+                    if (!e.hasResponse) return `${mockServiceMethod(f, e)}\n`;
+                    const args = serviceMethodArgs(e).map((arg) => `_${arg}`).join(', ');
+                    const sampleJson = JSON.stringify(e.responseSample, null, 4).split('\n').join('\n        ');
+                    return `    async ${e.actionCamel}(${args}): Promise<${e.returnType}> {
+        const sample: ${e.responseDTO} = ${sampleJson};
+        await mockDelay();
+        return ${e.mapper}.toDomain(sample);
+    }\n`;
+                },
+                imports: (e) => e.hasResponse
+                    ? [
+                        `import type { ${e.responseDTO} } from '../dtos/${e.ActionPascal}DTO';`,
+                        `import type { ${e.entity} } from '../../domain/entities/${e.entity}';`,
+                        `import { ${e.mapper} } from '../mappers/${e.mapper}';`,
+                    ]
+                    : [],
+            }]
+            : []),
         {
             file: path.join(base, 'domain', 'IServices', `${f.serviceInterface}.ts`),
             anchor: '// <create-feature:signatures>',
@@ -1426,8 +1528,13 @@ function appendFeature(repo, spec, f, manifest) {
 
 const SUPPORTED_METHODS = new Set(['GET', 'POST', 'PUT', 'DELETE']);
 
-/** Allowed values for an endpoint's optional `cache` (useApiQuery storeDuration). */
-const CACHE_DURATIONS = new Set(['6-hours', '8-hours', '12-hours', '24-hours', '2-days', '1-week']);
+/**
+ * Allowed values for an endpoint's optional `cache`. Durations map onto
+ * useApiQuery's storeDuration (persistent device cache); "always-fresh" maps
+ * onto `staleTime: 0` (defeats the app-wide 5-min in-memory react-query
+ * default — for lists whose server state changes between visits).
+ */
+const CACHE_DURATIONS = new Set(['always-fresh', '6-hours', '8-hours', '12-hours', '24-hours', '2-days', '1-week']);
 
 /**
  * Rejects specs that would generate broken TypeScript instead of failing later
@@ -1449,6 +1556,9 @@ function validateSpec(spec) {
     if (!Array.isArray(spec.endpoints) || !spec.endpoints.length) {
         problems.push('endpoints must be a non-empty array — design-only features never run generate.js (see SKILL.md Step 1b).');
         return problems;
+    }
+    if (spec.mock != null && typeof spec.mock !== 'boolean') {
+        problems.push(`mock must be a boolean (got ${JSON.stringify(spec.mock)}) — true generates <Feature>MockService and registers it in DI instead of the real service.`);
     }
 
     const seenActions = new Set();
@@ -1648,6 +1758,9 @@ function main() {
     if (spec.mode === 'create') {
         manifest.needsClaude.push(`src/features/${f.feature}/presentation/translations/ar.ts — replace placeholder Arabic strings (use the user story's Arabic text when present)`);
     }
+    if (f.mock) {
+        manifest.needsClaude.push(`src/features/${f.feature}/data/services/${f.mockServiceClass}.ts — enrich the sample catalog to cover the story's filters/states/pagination, then remove the TODO(claude); the DI container registers this mock (swap comment inside) until the real API exists`);
+    }
 
     fs.writeFileSync(path.join(repo, '.claude-skill-manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
     console.log(JSON.stringify(manifest, null, 2));
@@ -1658,6 +1771,6 @@ if (require.main === module) {
     process.exit(main());
 }
 
-const SKILL_VERSION = '1.5.0';
+const SKILL_VERSION = '1.7.0';
 
 module.exports = { featureModel, buildFilePlan, testsDirName, validateSpec, pascal, camel, snakeUpper, kebab, queryKeyName, queryKeyValue, SKILL_VERSION };

@@ -35,6 +35,8 @@ questions for every choice point below.
 
 ```
 - [ ] 0. Baseline: node <skill>/scripts/audit.js --baseline
+- [ ] 0b. Test infra: node <skill>/scripts/setup-test-infra.js (auto-installs
+        @testing-library/react-native + jest.setup.js wiring; failure → logic tests + report)
 - [ ] 1. Feature name → new feature or append?  Git tree clean?
 - [ ] 1b. Mode: full (backend + design) / backend only / design only
 - [ ] 2. (backend, full) Single or multiple? → curls one-by-one (auto-EXECUTE for the
@@ -73,6 +75,15 @@ section) applies throughout Step 5–8b hand-writing.
 3. `git status --porcelain`: dirty tree → warn that manifest-based rollback is only reliable on
    a clean tree, offer "continue anyway". Not a hard refusal.
 4. Run the tsc baseline NOW (before any generation): `node <skill>/scripts/audit.js --baseline`.
+5. Ensure render-test infra (AUTOMATIC — user decision 2026-08-19, no asking):
+   `node <skill>/scripts/setup-test-infra.js` — installs `@testing-library/react-native` as a
+   devDependency with the repo's own package manager, creates `jest.setup.js`
+   (native-module mocks) only if absent, and wires `setupFilesAfterEnv` when jest config
+   lives in package.json (a standalone jest.config.* is reported for a hand edit).
+   Idempotent — instant no-op when already set up. On install failure (exit 2): continue the
+   run with logic-level tests and SAY SO in the final report; never block the feature on it.
+   Note: this edits package.json + the lockfile — rollback.js does NOT undo an npm install;
+   mention the new devDependency in the report.
 
 ## Step 1b — Mode
 
@@ -121,9 +132,16 @@ The fixed sequence:
 2. Ask ONLY for the curl paste (or "no curl" → guided intake). Wait.
 3. **No response-body question** — capture the response by EXECUTING the curl (see
    "Response capture" below). Not asked, just done.
-3b. GET endpoint → ask ONLY the **cache question**: "cache this endpoint's response? no /
-   6-hours / 8-hours / 12-hours / 24-hours / 2-days / 1-week" → the endpoint's `cache` field
-   (maps to `useApiQuery` `storeDuration`). Non-GET: skip, never ask.
+3b. GET endpoint → ask ONLY the **cache question**, with the two cache layers spelled out so
+   "no" isn't misread as "no caching at all" (live finding 2026-08-19: a user was surprised
+   react-query still answered from memory after answering "no"):
+   > "How should this endpoint's responses be cached? 1. **no** — no device cache; react-query
+   > still keeps responses in memory for ~5 min (app-wide default) · 2. **always-fresh** —
+   > refetch on every visit, even the in-memory copy is bypassed (`staleTime: 0`; pick this
+   > for lists whose server data changes between visits) · 3. a **persistent device cache**:
+   > 6-hours / 8-hours / 12-hours / 24-hours / 2-days / 1-week (survives app restarts)"
+   → the endpoint's `cache` field (`null` / `"always-fresh"` / the duration). Non-GET: skip,
+   never ask.
 4. Multiple mode: ask **"next curl, or done?"** — on "next", loop back to 2 for the next
    endpoint. Single mode: skip this.
 5. When all curls are in ("done", or the single curl is captured): show the endpoint summary
@@ -136,6 +154,21 @@ The fixed sequence:
    `setAuthToken`/MMKV `authToken`) — it NEVER lands in any file; secret-hygiene enforces
    this. A login-required feature also gets `requiresAuth: true` in its SERVICES_DATA entry
    (design lane).
+
+**MOCK BACKEND (spec.mock: true) — first-class lane, not improvisation.** When the user says
+the backend doesn't exist yet ("use mock backend", "API not ready", "mock for now") — in the
+initial request or at any intake point — set top-level `"mock": true` in the spec and confirm
+it in one line. Consequences: (a) there is no live API, so **response capture cannot execute
+the curl** — ask for a sample response, or (with the user's explicit OK, as in the
+ApplicationStatus run) derive a realistic sample from the Figma screens/story and confirm it;
+(b) generate.js emits `data/services/<Feature>MockService.ts` — sample DTOs flowing through
+the REAL mappers — and register-di.js registers the MOCK for `TOKENS.<Feature>Service` with a
+swap comment (the real service class is still generated, unreferenced, ready for the swap);
+(c) YOU enrich the mock's sample catalog in Step 5.3 (filters, states, pagination — every
+filter-sheet option should have matching items); (d) DESIGN.md §1's mock question is
+pre-answered — never ask it again; (e) the final report states the one-line swap. The mock
+seam is the SERVICE interface — never mock at the repository or query layer, that would
+bypass the mappers.
 
 **YES — curl path (target: ONE paste per endpoint — the curl itself):**
 1. Paste → save to a scratch file → `node <skill>/scripts/parse-curl.js <file>`.
@@ -282,7 +315,7 @@ Before writing ANY helper (dates, location, device info, currency, digits, regex
 search `src/shared/utils/` → `src/shared/hooks/` → the feature's own `utils/`. Never duplicate
 an existing utility. Only if nothing fits: create it in the FEATURE's `presentation/utils/` —
 never silently add to `src/shared/utils`. The generated templates already import
-`getDeviceInfo`, `formatDateTimeDateMonthYear`, `useResolve`, etc. — keep it that way in
+`getDeviceInfo`, `formatNumericGregorianDate`, `useResolve`, etc. — keep it that way in
 everything you hand-write. (`cleanString` stays mapper-local; that is the repo convention.)
 
 ## Step 5 — Generate, fill, register, audit
@@ -302,7 +335,12 @@ everything you hand-write. (`cleanString` stays mapper-local; that is the repo c
    `TODO(claude)` in `test/`, and Arabic translation values. Match the generated code
    style; keep the sample-derived test inputs valid under your new rules. New error codes go
    into the `<FEATURE>_ERROR_CODE_VALUES` array in the errors file — the union type and the
-   runtime guard both derive from it.
+   runtime guard both derive from it. **`mock: true` additionally**: enrich the generated
+   `<Feature>MockService`'s sample catalog — enough items to exercise every filter option,
+   status value, search, and multiple pages (the ApplicationStatus reference: 20 items =
+   5 statuses × 4 tax types, realistic Arabic titles, honoring the endpoint's
+   search/filter/pagination params); write a mock-service test suite covering catalog
+   coverage + param handling; then remove the mock's `TODO(claude)` marker.
 4. `node <skill>/scripts/register-di.js <spec>` — DI + i18n + AppConfig/ConfigService + all
    SIX env files (real values only in `.env` + `.env.development`; the rest get placeholders —
    they are committed to git). First run plants permanent anchors (approved one-time edit).
@@ -317,7 +355,12 @@ everything you hand-write. (`cleanString` stays mapper-local; that is the repo c
 ## Step 6 — Final report
 
 Report: files created; TOKENS added; env keys still to fill (staging/preprod/production);
-session-value TODOs; core edits made (put/delete, first-run anchors). **Full/design modes
+session-value TODOs; core edits made (put/delete, first-run anchors). **`mock: true`**: state
+that the container serves `<Feature>MockService` and the exact swap (container.ts factory →
+real service, delete the mock file, restore `requiresAuth` if it was relaxed for testing).
+**Test infra**: report what setup-test-infra.js did (devDependency installed, jest.setup.js
+created/wired — these edits are NOT covered by rollback.js); if its install failed, state
+plainly that this feature ships logic-level tests only and what to run to fix it. **Full/design modes
 additionally**: screens built with their verification status (AR light/dark, EN mirror),
 deviations the user accepted at checkpoints, icons added to the registry, and the
 translations flagged for Corporate Communication review. And navigation:

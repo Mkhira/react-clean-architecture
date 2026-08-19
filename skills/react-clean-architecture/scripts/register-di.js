@@ -217,14 +217,26 @@ function registrationBlock(f) {
     if (f.hasApp) serviceArgs.push('dependencyContainer.resolve<IHttpClient>(TOKENS.HttpClient)');
     if (f.hasExternal) serviceArgs.push('dependencyContainer.resolve<IConfigService>(TOKENS.ConfigService)');
 
-    const blocks = [
-        `    // -- ${f.feature} feature --
+    // mock lane (spec.mock): the MOCK service is what the container serves —
+    // the swap back to the real service is a one-line factory change here
+    const serviceBlock = f.mock
+        ? `    // -- ${f.feature} feature --
+    // MOCK backend (spec.mock) — once the real API exists, swap the factory to
+    // new ${f.serviceClass}(${serviceArgs.length ? serviceArgs.join(', ') : ''}),
+    // import ${f.serviceClass} instead of ${f.mockServiceClass}, and delete the mock file.
+    container.register(TOKENS.${f.feature}Service, {
+        useFactory: () => new ${f.mockServiceClass}(),
+    });`
+        : `    // -- ${f.feature} feature --
     container.register(TOKENS.${f.feature}Service, {
         useFactory: (dependencyContainer) =>
             new ${f.serviceClass}(
                 ${serviceArgs.join(',\n                ')},
             ),
-    });`,
+    });`;
+
+    const blocks = [
+        serviceBlock,
         `    container.register(TOKENS.${f.feature}Repository, {
         useFactory: (dependencyContainer) =>
             new ${f.repositoryClass}(
@@ -265,7 +277,11 @@ function updateContainer(repo, f) {
     }
 
     const imports = [
-        `import { ${f.serviceClass} } from '@features/${f.feature}/data/services/${f.serviceClass}';`,
+        // mock lane: import ONLY the mock (the real class stays on disk but
+        // unreferenced — importing both would leave a dead import after tsc)
+        f.mock
+            ? `import { ${f.mockServiceClass} } from '@features/${f.feature}/data/services/${f.mockServiceClass}';`
+            : `import { ${f.serviceClass} } from '@features/${f.feature}/data/services/${f.serviceClass}';`,
         `import { ${f.repositoryClass} } from '@features/${f.feature}/data/repositories/${f.repositoryClass}';`,
         ...f.endpoints.map((e) => `import { ${e.useCase} } from '@features/${f.feature}/domain/usecases/${e.useCase}';`),
     ];

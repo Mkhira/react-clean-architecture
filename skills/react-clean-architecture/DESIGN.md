@@ -45,17 +45,25 @@ References shipped with this skill:
 - If the Figma MCP tools require their prerequisite skills (`figma-design-to-code` before
   `get_design_context`), invoke those skills first.
 
-## 1. Mock vs real API (ask once per feature, before building)
+## 1. Mock vs real API (decided once per feature, before building)
 
-Ask ONLY: **"Is the BFF endpoint ready — should screens call the real API, or generate a mock
-adapter?"** Real → wire the generated repository/use cases directly (full mode already has
-them). Not ready → add `data/mocks/<Feature>MockAdapter.ts` + a mock catalog behind the
-repository interface (integrated-tariff pattern) so every screen runs and verifies without a
-backend. **Design-only mode with no backend slice: SKIP the question entirely** — always use
-static typed sample data in the controller with `// TODO(claude): replace with queries.ts
-wiring` markers; if the user wants real API wiring, tell them to rerun the skill in
-backend/full mode. Design-append where the persisted spec already records the wiring
-decision: don't re-ask.
+**Spec has `mock: true`** (SKILL.md Step 2's mock-backend lane) → the decision is already
+made: generate.js emitted `data/services/<Feature>MockService.ts` and the container serves
+it — screens wire through the normal `queries.ts` hooks and never know they're mocked. SKIP
+this section's question entirely; your job here is only to make sure the mock catalog is rich
+enough for what the screens show (every filter option, status, multiple pages).
+
+Otherwise ask ONLY: **"Is the BFF endpoint ready — should screens call the real API, or mock
+the backend for now?"** Real → wire the generated repository/use cases directly (full mode
+already has them). Not ready → set `mock: true` in the spec and follow SKILL.md's mock lane:
+the mock seam is the SERVICE interface (`<Feature>MockService implements I<Feature>Service`,
+registered in the container with a swap comment) so the real mappers/entities stay exercised —
+**never** a repository-level adapter or controller-level sample data when a backend slice
+exists. **Design-only mode with no backend slice: SKIP the question entirely** — there is no
+service interface to mock; use static typed sample data in the controller with
+`// TODO(claude): replace with queries.ts wiring` markers; if the user wants real API wiring,
+tell them to rerun the skill in backend/full mode. Design-append where the persisted spec
+already records the wiring decision: don't re-ask.
 
 ## 2. Per-screen build procedure (in the user's collection order)
 
@@ -95,7 +103,24 @@ For each screen unit (screen + its sheets/dropdowns/state frames):
    - **Flow shell**: service flows live in ONE PageStepper screen with state-switched views
      (`detailsNode ? <Details/> : <Browse/>`), sheets as siblings via `BottomSheetModal`;
      footer buttons via the controller's `footerActions: StepperActionsProps` (mind the
-     StepperActions traps in COMPONENTS.md).
+     StepperActions traps in COMPONENTS.md). **Footerless screens** (the design has no
+     bottom buttons — e.g. a pure list/browse screen): PageStepper ALWAYS renders its
+     default "التالي" footer, so hide it with a partial override cast —
+     `footerActions={{ containerStyle: styles.hiddenFooter } as StepperActionsProps}` with
+     `hiddenFooter: { display: 'none' }` in styles.ts. The cast is safe: PageStepper spreads
+     the override over its own step handlers (verified pattern, ApplicationStatus).
+   - **Paginated lists (List organism + react-query)**: when search/filter state changes the
+     query input, a cached page can answer INSTANTLY and swap the dataset within a single
+     render — FlashList then keeps the STALE row layout while the pager shows the new totals
+     (live bug: 2 rows next to a 4-page pager, self-healing on page change). Fix: remount the
+     List on context change — controller returns
+     ``listContextKey: `${search}|${statusCsv ?? ''}|…`}`` (every query param EXCEPT the page
+     number) and the screen passes `key={listContextKey}` on `<List>`; page changes keep the
+     key so paging never remounts. Pair it with the settled-empty gate
+     (`showEmptyState: isSuccess && !isFetching && length === 0`) and
+     `ListEmptyComponent={showEmptyState ? undefined : null}` — List renders its default
+     EmptyView unless the prop is strictly `!== undefined`, so `null` suppresses the
+     empty-state flash while a fetch is in flight (see COMPONENTS.md → List).
    - **Flow transitions** (`design.transitions` from Step 2c): every recorded edge becomes a
      REAL handler — never a TODO. `presentation: "push"` → a state-switched view inside the
      flow host (integrated-tariff pattern) or a pushed route when the target is a standalone
@@ -114,13 +139,36 @@ For each screen unit (screen + its sheets/dropdowns/state frames):
      `// <design-lane:controller-return>`) so design-append can insert mechanically later.
 4. **Tests**: controller-hook tests (derived state, handlers, terminal/branch logic) AND
    component render tests (`@testing-library/react-native`) into the feature's `test/` dir.
-   RTL v14: `render()` is **async** — always `await render(...)`; native-module mocks live in
-   the repo's `jest.setup.js` (smoke test: `src/shared/testing/__tests__/renderInfra.test.tsx`).
+   The infra is guaranteed by SKILL.md Step 1.5 (`setup-test-infra.js` auto-installs the
+   library and wires `jest.setup.js`) — render tests are REQUIRED, not optional; skip them
+   ONLY if that install failed, and say so in the report. RTL v14: `render()` is **async** —
+   always `await render(...)`; native-module mocks live in the repo's `jest.setup.js`.
    Components needing theme/i18n get a feature-local render wrapper (REUSE-FIRST: check
-   `src/shared/testing/` before writing one).
+   `src/shared/testing/` before writing one). Priority render cases: the empty/loading gate
+   (never show the empty view while fetching), status-variant mapping on tags, RTL-direction
+   props, and one screen smoke render.
 5. **Verify** (section 3) → **checkpoint** (section 4) → next screen.
 
 ## 3. Verification loop (iOS simulator)
+
+**Preflight (once per run): touch injection.** Check `command -v idb` — if missing, also try
+`export PATH="$HOME/.local/bin:$PATH"` first (pipx installs there and fresh shells may lack
+it). The skill's installer auto-installs idb (brew `facebook/fb/idb-companion` + pipx
+`fb-idb`); when present, verification is INTERACTIVE — drive the UI with real taps instead
+of temp-code tricks:
+
+- `idb list-targets` → confirm the booted simulator; commands target it automatically.
+- `idb ui tap <x> <y>` (points, origin top-left) — tap buttons, filter icons, pager numbers.
+  Get coordinates from the screenshot you just took (screenshot px ÷ scale = points).
+- `idb ui text '<text>'` after tapping an input — type into search fields;
+  `idb ui key 40` = return.
+- Use taps to exercise EVERY `design.transitions` edge and every interactive state
+  (sheets open via the real trigger, filters actually applied, pagination actually paged —
+  the ApplicationStatus pagination bug was only reachable through a 3-tap sequence).
+
+idb missing (installer skipped/failed) → fall back to the temp-edit tricks (auto-open sheets
+via `initialVisible: true`, forced page size, etc. — ALWAYS reverted after screenshots) and
+note "screenshot-only verification" in the checkpoint + final report.
 
 Per screen, after generation compiles (`npx tsc --noEmit` clean vs baseline):
 

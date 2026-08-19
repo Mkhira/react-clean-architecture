@@ -2,7 +2,7 @@
 
 > An [Agent Skill](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview) that scaffolds **complete clean-architecture features** in a React Native (Expo) app from a single curl paste — and builds their **pixel-accurate screens from Figma**, verified live on the iOS simulator.
 
-![version](https://img.shields.io/badge/version-1.5.0-blue) ![tests](https://img.shields.io/badge/tests-106%20passing-brightgreen) ![deps](https://img.shields.io/badge/dependencies-zero-lightgrey) ![node](https://img.shields.io/badge/node-%E2%89%A518-339933) ![license](https://img.shields.io/badge/license-MIT-yellow)
+![version](https://img.shields.io/badge/version-1.7.0-blue) ![tests](https://img.shields.io/badge/tests-127%20passing-brightgreen) ![deps](https://img.shields.io/badge/dependencies-zero-lightgrey) ![node](https://img.shields.io/badge/node-%E2%89%A518-339933) ![license](https://img.shields.io/badge/license-MIT-yellow)
 
 Works with **Claude Code**, **Cursor**, **OpenAI Codex CLI**, and any agent that reads `AGENTS.md` / Markdown skills. One [install script](#install), three tools.
 
@@ -50,9 +50,14 @@ flowchart LR
 | **Backend only** | ✅ | — | API first, screens later |
 | **Design only** | — | ✅ | screens for an existing/legacy feature |
 
+Any backend mode can also run with a **mock backend** (`"mock": true` — say "use mock backend"
+/ "API not ready"): the generator emits a `<Feature>MockService` whose sample DTOs flow
+through the **real mappers**, and the DI container serves it with a one-line swap comment for
+when the real API lands. Screens, queries, and tests never know they're mocked.
+
 ### The design lane (full / design modes)
 
-Screens are built by the agent from Figma links following strict rules ([DESIGN.md](skills/react-clean-architecture/DESIGN.md)) — theme tokens only, shared-component reuse gate, Arabic-first RTL — then **verified on the iOS simulator** in three passes before sign-off.
+Screens are built by the agent from Figma links following strict rules ([DESIGN.md](skills/react-clean-architecture/DESIGN.md)) — theme tokens only, shared-component reuse gate (backed by a COMPONENTS.md **drift detector** in the audit), Arabic-first RTL — then **verified on the iOS simulator** before sign-off. When `idb` is present (the installer sets it up automatically), verification is **interactive**: real taps drive every flow transition, filter, and pager — not just screenshots.
 
 ```mermaid
 flowchart LR
@@ -168,6 +173,8 @@ The agent walks the checklist in [SKILL.md](skills/react-clean-architecture/SKIL
 | `scripts/register-di.js` | DI + i18n + config + 6 env files, idempotent |
 | `scripts/audit.js` | tsc-baseline diff · jest · structure/DI/env/secret checks (`--baseline`, `--persist-spec`) |
 | `scripts/rollback.js` | manifest-scoped undo — dry-run plan, `--apply` to execute |
+| `scripts/setup-test-infra.js` | auto-installs `@testing-library/react-native`, creates/wires `jest.setup.js` (`--check` for report-only) |
+| `scripts/check-components-md.js` | COMPONENTS.md drift detector — DRIFT/STALE vs `src/shared/components` (`--strict`) |
 | `scripts/remove-feature.js` | delete a merged feature everywhere (dir + DI + i18n + config + env) |
 | `scripts/rename-feature.js` | rename across code/DI/i18n/config/env via derived identifiers only |
 | `scripts/migrate-feature.js` | upgrade machine-owned files to current templates; hand-written code preserved |
@@ -176,7 +183,7 @@ Paths are relative to [`skills/react-clean-architecture/`](skills/react-clean-ar
 
 ## Testing the skill itself
 
-106 tests on Node's built-in runner — still zero dependencies:
+127 tests on Node's built-in runner — still zero dependencies:
 
 ```bash
 node --test skills/react-clean-architecture/tests/*.test.js
@@ -188,6 +195,9 @@ Unit suites cover the parsers, generation scenarios (create/append/never-overwri
 
 - A repo following the zatcaReact conventions: tsyringe `TOKENS`/`TokenRegistry`, `Result<T, E>`, `AppError`-style typed errors, `IHttpClient`, i18next `featureTranslations`, `@core`/`@features`/`@shared` path aliases, jest-expo.
 - Node ≥ 18. The design lane additionally needs the Figma MCP server and a booted iOS simulator.
+- `install.sh` also auto-installs **idb** for tap-driven simulator verification (Homebrew tap
+  `facebook/fb`, or the prebuilt GitHub-release companion when Homebrew is absent — Homebrew
+  itself is never auto-installed; `--no-tools` skips).
 
 ## Secret handling
 

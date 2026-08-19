@@ -23,6 +23,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const { featureModel, buildFilePlan, testsDirName, SKILL_VERSION } = require('./generate.js');
+const { listComponents, listHeadings, diffComponentsDoc } = require('./check-components-md.js');
 
 const HELP = `audit.js — audit a generated feature (structure, DI, env, tsc diff, jest).
 
@@ -262,6 +263,35 @@ function checkReuseFirst(repo, f) {
     else pass('reuse-first', 'no shared-util re-implementations detected');
 }
 
+/**
+ * Baseline comparison ignores LINE/COLUMN numbers: inserting a line above a
+ * pre-existing error shifts its position and would otherwise report it as
+ * "new" (false positive observed live: a Routes.ts insertion shifted a
+ * baseline error one line down). Errors are matched by file + TS code +
+ * message as a MULTISET, so a genuinely duplicated error still surfaces.
+ */
+function normalizeTscError(line) {
+    return line.replace(/\(\d+,\d+\)/, '');
+}
+
+/** Pure diff (exported for the skill's test suite): current errors not covered by the baseline multiset. */
+function freshTscErrors(baseline, current) {
+    const baselineCounts = new Map();
+    for (const line of baseline) {
+        const key = normalizeTscError(line);
+        baselineCounts.set(key, (baselineCounts.get(key) ?? 0) + 1);
+    }
+    return current.filter((line) => {
+        const key = normalizeTscError(line);
+        const remaining = baselineCounts.get(key) ?? 0;
+        if (remaining > 0) {
+            baselineCounts.set(key, remaining - 1);
+            return false;
+        }
+        return true;
+    });
+}
+
 function checkTscDiff(repo) {
     const baselinePath = path.join(repo, BASELINE_FILE);
     let baseline = [];
@@ -275,10 +305,34 @@ function checkTscDiff(repo) {
         warn('tsc-baseline', `${BASELINE_FILE} not found — treating ALL current errors as new (run \`audit.js --baseline\` before generating next time)`);
     }
     const current = tscErrors(repo);
-    const baselineSet = new Set(baseline);
-    const fresh = current.filter((line) => !baselineSet.has(line));
+    const fresh = freshTscErrors(baseline, current);
     if (fresh.length) fail('tsc-diff', `${fresh.length} NEW error(s):\n    ${fresh.slice(0, 20).join('\n    ')}${fresh.length > 20 ? `\n    …and ${fresh.length - 20} more` : ''}`);
-    else pass('tsc-diff', `no new tsc errors (baseline ${baseline.length}, current ${current.length})`);
+    else pass('tsc-diff', `no new tsc errors (baseline ${baseline.length}, current ${current.length}; compared line-number-insensitively)`);
+}
+
+/**
+ * COMPONENTS.md drift: a shared component with no dictionary entry starves the
+ * reuse gate (live finding: the List organism was missing → "paginated list"
+ * had no quick-lookup hit). WARN-level — the fix is writing the entry, which
+ * never blocks the feature itself.
+ */
+function checkComponentsMd(repo) {
+    const doc = path.join(__dirname, '..', 'COMPONENTS.md');
+    const components = fs.existsSync(doc) ? listComponents(repo) : null;
+    if (components === null) {
+        pass('components-md', 'skipped (no COMPONENTS.md or no src/shared/components)');
+        return;
+    }
+    const { drift, stale } = diffComponentsDoc(components, listHeadings(doc));
+    if (drift.length || stale.length) {
+        const parts = [
+            ...drift.map((c) => `DRIFT ${c.name} (${c.where}) has no entry`),
+            ...stale.map((h) => `STALE "### ${h.heading}" matches no component`),
+        ];
+        warn('components-md', `${parts.join('; ')} — update COMPONENTS.md (node <skill>/scripts/check-components-md.js for details)`);
+    } else {
+        pass('components-md', `all ${components.length} shared components have dictionary entries`);
+    }
 }
 
 function checkJest(repo, f) {
@@ -397,6 +451,7 @@ function main() {
     checkDuplicatePaths(repo, spec, f);
     checkTodos(repo, f);
     checkReuseFirst(repo, f);
+    checkComponentsMd(repo);
     if (!argv.includes('--skip-tsc')) checkTscDiff(repo);
     if (!argv.includes('--skip-jest')) checkJest(repo, f);
 
@@ -414,6 +469,20 @@ function main() {
             .map(([field]) => `${endpoint.action}.${field}`)
     );
     if (sessionFields.length) reminders.push(`Session-sourced fields still passed as input (wire to auth session later): ${sessionFields.join(', ')}`);
+    if (spec.mock === true) {
+        reminders.push(`MOCK backend: the container serves ${f.feature}MockService — when the real API is live, swap the container.ts factory back to ${f.feature}Service (comment at the registration), delete the mock file, and restore requiresAuth if it was relaxed for mock testing.`);
+    }
+    // render-test infra is auto-installed (user decision 2026-08-19): the gap
+    // means setup-test-infra.js hasn't run (or failed) — instruct, don't offer
+    try {
+        const pkg = JSON.parse(fs.readFileSync(path.join(repo, 'package.json'), 'utf8'));
+        const deps = { ...(pkg.dependencies ?? {}), ...(pkg.devDependencies ?? {}) };
+        if (!deps['@testing-library/react-native']) {
+            reminders.push('Render-test infra missing: run `node <skill>/scripts/setup-test-infra.js` (installs @testing-library/react-native + jest.setup.js wiring automatically). If the install fails, ship logic-level tests and SAY SO in the final report.');
+        }
+    } catch {
+        // unreadable package.json — jest/tsc checks will have complained already
+    }
     reminders.push(`Navigation (backend-only runs): expose the screen with a route file under app/ (expo-router) rendering ${f.feature}Screen from presentation/screens/. Full/design-mode runs: the design lane registers navigation instead — see DESIGN.md §5.`);
     console.log('\nReminders:');
     for (const reminder of reminders) console.log(`  - ${reminder}`);
@@ -432,3 +501,5 @@ function main() {
 if (require.main === module) {
     process.exit(main());
 }
+
+module.exports = { normalizeTscError, freshTscErrors };

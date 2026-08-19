@@ -122,10 +122,10 @@ test('status-derivation: an unfilled status TODO blocks the audit until hand-wri
 test('reuse-first: re-implementing a shared util is flagged; mapper-local cleanString is exempt', () => {
     const { result, repo, specPath } = auditedFixture({
         mutate: (repo) => write(repo, 'src/features/OrderTracking/presentation/utils/dates.ts',
-            'export const formatDateTimeDateMonthYear = (value: string) => value;\n'),
+            'export const formatNumericGregorianDate = (value: string) => value;\n'),
     });
     assert.equal(result.status, 0, 'reuse-first is a WARN, not a FAIL');
-    assert.match(result.stdout, /WARN reuse-first.*formatDateTimeDateMonthYear/);
+    assert.match(result.stdout, /WARN reuse-first.*formatNumericGregorianDate/);
     // cleanString lives in the generated mapper and must NOT be flagged
     assert.ok(!/reuse-first.*cleanString/.test(result.stdout));
 });

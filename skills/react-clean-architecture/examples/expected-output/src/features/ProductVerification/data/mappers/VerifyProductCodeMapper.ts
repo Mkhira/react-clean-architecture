@@ -9,17 +9,17 @@ import type {
     VerifyProductCodeInput,
     VerifyProductCodePack,
 } from '../../domain/entities/VerifyProductCodeResult';
-import { formatDateTimeDateMonthYear } from '@shared/utils/dateFormat';
+import { formatNumericGregorianDate } from '@shared/utils/dateFormat';
 
 const cleanString = (value: string | null | undefined): string | null => value?.trim() || null;
 
 const toVerifyProductCodePack = (dto: VerifyProductCodeResponsePackDTO): VerifyProductCodePack => ({
     productDescription: cleanString(dto.ProductDescription),
-    dateOfManufacture: formatDateTimeDateMonthYear(dto.DateOfManufacture),
+    dateOfManufacture: formatNumericGregorianDate(dto.DateOfManufacture),
     organisationName: cleanString(dto.OrganisationName),
     countryOfManufacture: cleanString(dto.CountryOfManufacture),
     customsAuthority: cleanString(dto.CustomsAuthority),
-    customersClearanceDate: formatDateTimeDateMonthYear(dto.CustomersClearanceDate),
+    customersClearanceDate: formatNumericGregorianDate(dto.CustomersClearanceDate),
 });
 
 export const VerifyProductCodeMapper = {

@@ -1,5 +1,5 @@
 import { GetScanHistoryMapper } from '../data/mappers/GetScanHistoryMapper';
-import { formatDateTimeDateMonthYear } from '@shared/utils/dateFormat';
+import { formatNumericGregorianDate } from '@shared/utils/dateFormat';
 
 jest.mock('@shared/components', () => ({}));
 
@@ -18,7 +18,7 @@ describe('GetScanHistoryMapper', () => {
 
         expect(mapped[0].scanId).toBe(7);
         expect(mapped[0].scanCode).toBe("1234567890123456");
-        expect(mapped[0].scannedAt).toBe(formatDateTimeDateMonthYear(SAMPLE[0].ScannedAt));
+        expect(mapped[0].scannedAt).toBe(formatNumericGregorianDate(SAMPLE[0].ScannedAt));
         expect(mapped[0].wasValid).toBe(true);
     });
 });

@@ -10,6 +10,7 @@
 #   ./install.sh agents --project <dir>      # any AGENTS.md-compatible agent (same as codex)
 #
 # Add --copy to copy instead of symlink (Claude target only; others always copy).
+# Add --no-tools to skip the idb simulator-touch-tool install (macOS only).
 # Re-running is safe: links are refreshed, copies replaced, AGENTS.md updated in place.
 set -euo pipefail
 
@@ -26,11 +27,13 @@ fi
 TARGET="${1:-}"
 PROJECT=""
 COPY=0
+TOOLS=1
 shift || true
 while [ $# -gt 0 ]; do
   case "$1" in
-    --project) PROJECT="$2"; shift 2 ;;
-    --copy)    COPY=1; shift ;;
+    --project)  PROJECT="$2"; shift 2 ;;
+    --copy)     COPY=1; shift ;;
+    --no-tools) TOOLS=0; shift ;;
     *) echo "unknown option: $1" >&2; exit 1 ;;
   esac
 done
@@ -76,6 +79,88 @@ install_link_or_copy() { # $1 = destination dir
   echo "linked  → $1"
 }
 
+# idb (Facebook's iOS debug bridge) gives the design lane real touch injection
+# on the iOS simulator (`idb ui tap x y`) — without it, verification falls back
+# to screenshot-only + temp-code tricks. Installed automatically (user decision
+# 2026-08-19); every step is non-fatal so a tool failure never breaks the skill
+# install itself. Skip with --no-tools.
+install_touch_tools() {
+  [ "$TOOLS" = 1 ] || { echo "tools   → skipped (--no-tools)"; return 0; }
+  [ "$(uname -s)" = "Darwin" ] || { echo "tools   → skipped (idb is macOS-only)"; return 0; }
+  if command -v idb >/dev/null 2>&1; then
+    echo "tools   → idb already installed"
+    return 0
+  fi
+  echo "tools   → installing idb (simulator touch injection; may take a few minutes)…"
+  # -- the companion (native daemon) --
+  if command -v brew >/dev/null 2>&1; then
+    if ! brew list idb-companion >/dev/null 2>&1; then
+      # idb-companion lives in Facebook's tap, not homebrew-core
+      brew tap facebook/fb >/dev/null 2>&1 || echo "tools   → WARN: brew tap facebook/fb failed" >&2
+      brew install facebook/fb/idb-companion || echo "tools   → WARN: brew install idb-companion failed" >&2
+    fi
+  else
+    # No Homebrew — and Homebrew itself is NEVER auto-installed (that means
+    # piping a remote script with admin rights; an installer must not do that
+    # silently). Instead: Facebook publishes a prebuilt universal companion on
+    # every GitHub release — download it to ~/.local (user-writable, no sudo).
+    echo "tools   → Homebrew not found; using the prebuilt companion from the GitHub release"
+    COMPANION_HOME="$HOME/.local/idb-companion"
+    # note the underscore: the release archive ships bin/idb_companion, and the
+    # python client searches PATH for exactly "idb_companion"
+    COMPANION_BIN="$COMPANION_HOME/idb-companion.universal/bin/idb_companion"
+    if [ ! -x "$COMPANION_BIN" ]; then
+      TMP_DL="$(mktemp -d)"
+      if curl -fsSL -o "$TMP_DL/idb-companion.tar.gz" \
+           https://github.com/facebook/idb/releases/latest/download/idb-companion.universal.tar.gz \
+         && mkdir -p "$COMPANION_HOME" \
+         && tar -xzf "$TMP_DL/idb-companion.tar.gz" -C "$COMPANION_HOME"; then
+        :
+      else
+        echo "tools   → WARN: companion download/extract failed (network?) — install by hand:" >&2
+        echo "          https://github.com/facebook/idb/releases (idb-companion.universal.tar.gz)" >&2
+      fi
+      rm -rf "$TMP_DL"
+    fi
+    if [ -x "$COMPANION_BIN" ]; then
+      # wrapper, not a symlink: the binary locates its Frameworks/ relative to
+      # its own real path, so it must be exec'd at its extracted location
+      mkdir -p "$HOME/.local/bin"
+      printf '#!/bin/sh\nexec "%s" "$@"\n' "$COMPANION_BIN" > "$HOME/.local/bin/idb_companion"
+      chmod +x "$HOME/.local/bin/idb_companion"
+    fi
+  fi
+  # pipx's default interpreter can be a broken Homebrew python (seen live:
+  # python@3.14 failing platform.mac_ver()) — retry pinned to the system python
+  pipx_install_fb_idb() {
+    pipx install fb-idb >/dev/null 2>&1 \
+      || pipx install --python /usr/bin/python3 fb-idb >/dev/null 2>&1 \
+      || pipx upgrade fb-idb >/dev/null 2>&1
+  }
+  if command -v pipx >/dev/null 2>&1; then
+    pipx_install_fb_idb || echo "tools   → WARN: pipx install fb-idb failed" >&2
+  elif brew install pipx >/dev/null 2>&1 && command -v pipx >/dev/null 2>&1; then
+    pipx ensurepath >/dev/null 2>&1 || true
+    pipx_install_fb_idb || echo "tools   → WARN: pipx install fb-idb failed" >&2
+  elif command -v python3 >/dev/null 2>&1; then
+    python3 -m pip install --user fb-idb >/dev/null 2>&1 \
+      || echo "tools   → WARN: pip install fb-idb failed" >&2
+  else
+    echo "tools   → WARN: no pipx/python3 — install fb-idb by hand: pipx install fb-idb" >&2
+  fi
+  if command -v idb >/dev/null 2>&1; then
+    echo "tools   → idb ready (design lane will verify with real taps)"
+  elif [ -x "$HOME/.local/bin/idb" ] || ls "$HOME"/Library/Python/*/bin/idb >/dev/null 2>&1; then
+    # installed, just not on PATH in this shell (pipx → ~/.local/bin;
+    # `pip --user` on Apple's framework python → ~/Library/Python/<ver>/bin)
+    echo "tools   → idb installed but not on PATH yet — add to your shell profile:"
+    echo "            export PATH=\"\$HOME/.local/bin:\$HOME/Library/Python/*/bin:\$PATH\""
+  else
+    echo "tools   → WARN: idb client not installed — design lane falls back to screenshot-only." >&2
+    echo "          Manual: pipx install fb-idb   (or: python3 -m pip install --user fb-idb)" >&2
+  fi
+}
+
 write_agents_block() { # $1 = AGENTS.md path, $2 = skill dir (relative to project)
   local file="$1" rel="$2"
   local begin="<!-- BEGIN ${SKILL_NAME} skill -->"
@@ -100,6 +185,11 @@ EOF
   mv "$tmp" "$file"
   echo "updated → $file"
 }
+
+# touch tools first (valid targets only) — non-fatal, see install_touch_tools
+case "$TARGET" in
+  claude|cursor|codex|agents) install_touch_tools ;;
+esac
 
 case "$TARGET" in
   claude)

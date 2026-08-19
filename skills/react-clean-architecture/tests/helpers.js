@@ -150,7 +150,7 @@ export class ConfigService implements IConfigService {
 `);
 
     // a shared util so the reuse-first audit check has an inventory
-    write(repo, 'src/shared/utils/dateFormat.ts', `export const formatDateTimeDateMonthYear = (value) => value;
+    write(repo, 'src/shared/utils/dateFormat.ts', `export const formatNumericGregorianDate = (value) => value;
 `);
 
     return repo;

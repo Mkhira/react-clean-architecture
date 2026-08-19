@@ -29,6 +29,7 @@ Source of truth: `src/shared/components/` (atomic design: `ui/atoms`, `ui/molecu
 | Radio/checkbox single | `Radio` / `Checkbox` (controlled) |
 | Radio/checkbox group (filter/sort sheets) | `OptionGroup<T>` (generic) |
 | Ready-made filter+sort triggers & sheets | `Filtration` |
+| Any scrolling/paginated list (pager, infinite scroll, empty state) | `List` (organism) — never raw FlatList/FlashList |
 | Segmented control | `ContentSwitcher`; tabs → `Tab`/`TabList` |
 | On/off switch | `TogglePill`; row with toggle → `ListItem`/`MenuItem` `withToggle` |
 | Selectable card (radio/checkbox) | `Card variant='selectable'`; plain container card → `Card showActions={false} showIcon={false}` |
@@ -621,7 +622,7 @@ showBanner('Saved', { type: 'success', message: t('common.saved') });
 - `nextButtonDisabled? (false)`; `previoudButtonDisabled? (false)` — **note the typo, really spelled `previoud…`**.
 - `prevButtonProps?/nextButtonProps?: ButtonProps` — **FULL REPLACEMENT semantics**: the default button (variant/size/fullWidth/onPress/label) is discarded; you must supply your own `label` + `onPress` + `style: {flex: 1}` (the internal handlers are NOT wired in). Only `*ButtonDisabled` still overrides `disabled`. (Integrated-tariff's `navigationPathButtonProps` documents this trap.)
 - `children?` — rendered above the button row; `containerStyle?`, `buttonContainerStyle?`.
-**Behavior & gotchas:** Wraps `Button` (previous = outline, next = primary, both `lg fullWidth`); top border + `3xl` top padding; RTL-safe row.
+**Behavior & gotchas:** Wraps `Button` (previous = outline, next = primary, both `lg fullWidth`); top border + `3xl` top padding; RTL-safe row. **Footerless screens**: PageStepper ALWAYS renders this footer with a default "التالي" — for designs with no bottom buttons, hide it via `footerActions={{ containerStyle: styles.hiddenFooter } as StepperActionsProps}` (`hiddenFooter: { display: 'none' }`); the partial-object cast is safe because PageStepper spreads the override over its own handlers (verified: ApplicationStatus).
 **Usage:**
 ```tsx
 <StepperActions currentStep={step} totalSteps={4}
@@ -822,6 +823,24 @@ showToast(t('common.copied'));
 **Usage:**
 ```tsx
 <HelpCenterText />
+```
+
+### List — organism
+**Purpose:** The app's list surface: FlashList-backed flat list (default) or SectionList variant, with a numeric RTL pager, infinite scroll, pull-to-refresh, and a built-in empty view. Use it for EVERY paginated/searchable list — never a raw FlatList/FlashList.
+**Exports:** `List` (default + named); types `ListPagination`, `ListSection`, plus the variant prop types. `HOW_TO_USE.md` lives in the component folder.
+**Key props:**
+- Default variant: every `FlashListProps` field (`data`, `renderItem`, `keyExtractor`, `estimatedItemSize`, …). `variant: 'section'` + `sections`/`renderSectionHeader` switches to SectionList.
+- `pagination?: ListPagination` — `{currentPage, startPage?, endPage?, pageSize?, totalCount?, totalPages?, onPageChange, onLoadMore?, onLoadPrevious?, hasMore?, isLoadingMore?, …}`. Pager + infinite scroll are complementary, not modes; `totalPages` derives from `ceil((totalCount ?? visibleCount)/pageSize)` when omitted. Server-side paging with a windowed page: pass `startPage: currentPage, endPage: currentPage` and let `onPageChange` refetch.
+- `emptyViewProps?: EmptyViewProps` — customizes the DEFAULT empty view (falls back to `common.empty.*`); ignored when `ListEmptyComponent` is passed.
+- `refreshing?/onRefresh?` — pull-to-refresh with the shared Loader; `headerChildren`/`footerChildren` — content inside the scroll view; `containerStyle`/`style`; `testID` (prefixes `-pagination` etc.).
+**Behavior & gotchas:** (1) **Empty view shows unless `ListEmptyComponent !== undefined`** — so `ListEmptyComponent={showEmptyState ? undefined : null}` is the idiom to suppress the empty-state flash while a fetch is in flight (`null` suppresses, `undefined` restores the default), gated on `isSuccess && !isFetching && length === 0`. (2) **Stale-layout on instant dataset swaps**: when a react-query cache hit swaps `data` within one render (search/filter context change), FlashList keeps the old row layout while the pager updates — remount via `key={listContextKey}` built from every query param EXCEPT the page (see DESIGN.md §2). (3) The pager is RTL-aware; item 1 of a `pagination` window is 1-based.
+**Usage:**
+```tsx
+<List key={listContextKey} data={items} renderItem={renderItem} keyExtractor={keyExtractor}
+  pagination={{ currentPage, startPage: currentPage, endPage: currentPage,
+    pageSize: PAGE_SIZE, totalCount, onPageChange }}
+  ListEmptyComponent={showEmptyState ? undefined : null}
+  emptyViewProps={{ title: t('feature.empty'), iconProps: { name: 'searchRemove' } }} />
 ```
 
 ### Modal — organism

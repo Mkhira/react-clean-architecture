@@ -27,7 +27,7 @@ Manual path (user says they have no curl):
 - Entity: `GetAuditEventsItem` + `GetAuditEventsResult = GetAuditEventsItem[]` +
   `GetAuditEventsInput = { entityId: string }`.
 - `endpoints.ts`: `` GET_AUDIT_EVENTS: (entityId: string) => `/v1/audit/${entityId}/events` ``
-- Mapper: `toDomain` only (`dto.map(...)`, `At` through `formatDateTimeDateMonthYear`).
+- Mapper: `toDomain` only (`dto.map(...)`, `At` through `formatNumericGregorianDate`).
 - Use case: `IUseCase<GetAuditEventsInput, Result<GetAuditEventsResult, AuditTrailError>>`;
   Claude implements the descending sort rule + its test.
 - Mapper test mocks the `@shared/components` barrel (date field present) and asserts the

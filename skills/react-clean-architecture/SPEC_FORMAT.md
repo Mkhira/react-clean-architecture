@@ -11,6 +11,7 @@ mode and documentation.
 |---|---|---|
 | `feature` | string | PascalCase. Grep `tokens.ts`/`container.ts` for collisions first |
 | `mode` | `"create"` \| `"append"` | append = feature dir already exists (anchors expected) |
+| `mock` | boolean (optional) | `true` = the real backend doesn't exist yet: generate.js additionally emits `data/services/<Feature>MockService.ts` (sample DTOs through the REAL mappers) and register-di.js registers **it** for `TOKENS.<Feature>Service` with a swap comment. The real service class is still generated for the later swap. Set it when the user says "mock backend" / "API not ready" (SKILL.md Step 2) |
 | `appHost` | string | `EXPO_PUBLIC_API_URL` as read from `.env.development` at spec time |
 | `endpoints` | Endpoint[] | one entry per endpoint (non-empty — design-only records have none and never feed generate.js) |
 | `skillVersion` | string | PERSISTED specs only (never in the generate.js input — audit stamps it). Hand-written design-only records: copy the `SKILL_VERSION` constant from `<skill>/scripts/generate.js` |
@@ -31,11 +32,11 @@ mode and documentation.
 | `requestFieldSources` | map | provenance per request field — see below |
 | `responseSample` | object \| array \| null | raw pasted JSON; `[…]` = top-level array; null = "none" → `Result<void, E>` |
 | `typeOverrides` | map | answers to ambiguity questions — see below |
-| `dateFields` | string[] | dot-paths formatted with `formatDateTimeDateMonthYear` in the mapper |
+| `dateFields` | string[] | dot-paths formatted with `formatNumericGregorianDate` in the mapper |
 | `statusEnum` | `{field, values[]}` \| null | emits the union type; the DERIVATION is hand-written (TODO in mapper, audit-enforced) |
 | `userStory` | string \| null | kept as doc comment; drives rules + Arabic strings |
 | `rules` | string[] | short rule statements → TODO bullets in the use case + tests |
-| `cache` | duration \| null | GET only — response cache via `useApiQuery` `storeDuration`: `"6-hours"` \| `"8-hours"` \| `"12-hours"` \| `"24-hours"` \| `"2-days"` \| `"1-week"`; omit/null = no persistent cache. Asked per endpoint during intake |
+| `cache` | duration \| `"always-fresh"` \| null | GET only, asked per endpoint during intake. **Two cache layers exist** — a duration (`"6-hours"` \| `"8-hours"` \| `"12-hours"` \| `"24-hours"` \| `"2-days"` \| `"1-week"`) enables the PERSISTENT device cache (`useApiQuery` `storeDuration`, survives restarts); omit/null disables only that — react-query's app-wide IN-MEMORY defaults (staleTime 5 min) still apply; `"always-fresh"` emits `staleTime: 0` so every mount/param-change refetches (pick for lists whose server state changes between visits, e.g. "my requests") |
 
 ### `baseUrl` (external endpoints)
 
