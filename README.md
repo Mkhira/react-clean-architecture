@@ -17,7 +17,7 @@ src/features/<Feature>/
 ├── data/          dtos · endpoints · mappers · service · repository
 ├── domain/        entities · errors · IRepositories · IServices · use cases
 ├── presentation/  screens + controllers · styles · queries · translations (en/ar)
-├── test/          mapper + use-case Jest suites
+├── test/          mapper + use-case Jest suites (+ render tests in the design lane)
 └── feature-spec.json   (sanitized, persisted — powers append/remove/rename/migrate)
 ```
 
@@ -102,12 +102,17 @@ npx skills@latest add Mkhira/react-clean-architecture
 
 Pick your agent when prompted (Claude Code, Cursor, Windsurf, Codex, …) — it installs into the right place automatically. The skill lives at [`skills/react-clean-architecture/`](skills/react-clean-architecture/) in the standard Agent-Skills layout.
 
+> This path installs the skill files only — it never runs `install.sh`, so follow up with the
+> [touch-tools step](#simulator-touch-tools-idb) to get tap-driven verification.
+
 ### Claude Code — native plugin
 
 ```
 /plugin marketplace add Mkhira/react-clean-architecture
 /plugin install react-clean-architecture@react-clean-architecture
 ```
+
+> Skill files only — follow up with the [touch-tools step](#simulator-touch-tools-idb).
 
 ### install.sh (clone first)
 
@@ -123,7 +128,24 @@ cd react-clean-architecture
 | **Codex CLI** | `./install.sh codex` → `~/.codex/skills/` + `~/.codex/AGENTS.md` | `./install.sh codex --project <app>` (+ `AGENTS.md` block) |
 | Any `AGENTS.md` agent | — | `./install.sh agents --project <app>` |
 
-Re-running is safe: symlinks are refreshed, copies are replaced, and `AGENTS.md` blocks are updated between markers instead of duplicated.
+Re-running is safe: symlinks are refreshed, copies are replaced, and `AGENTS.md` blocks are updated between markers instead of duplicated. Every `install.sh` target also runs the [touch-tools step](#simulator-touch-tools-idb) automatically (`--no-tools` skips it).
+
+### Simulator touch tools (idb)
+
+The design lane verifies screens **with real taps** (`idb ui tap/text` — every flow transition, filter, and pager exercised on the simulator) when [idb](https://fbidb.io) is installed. `install.sh` sets it up automatically on macOS; if you installed via `npx skills`, the plugin marketplace, or a manual copy, run the tools-only target once:
+
+```bash
+./install.sh tools        # from a clone of this repo
+```
+
+What it installs and how:
+
+| Piece | With Homebrew | Without Homebrew |
+|---|---|---|
+| `idb_companion` (native daemon — the part that injects touches) | `brew tap facebook/fb && brew install facebook/fb/idb-companion` | prebuilt `idb-companion.universal.tar.gz` from the [GitHub release](https://github.com/facebook/idb/releases) into `~/.local` (no sudo) behind an exec wrapper |
+| `idb` CLI (Python client) | `pipx install fb-idb` (retries pinned to the system Python if pipx's default interpreter is broken) | `python3 -m pip install --user fb-idb` (system Python ships with the Xcode CLT) |
+
+Homebrew itself is **never** auto-installed. Every step is non-fatal — if anything fails, the design lane falls back to screenshot-only verification and says so. Not on PATH after install? `export PATH="$HOME/.local/bin:$HOME/Library/Python/*/bin:$PATH"`.
 
 ### Manual
 
@@ -141,11 +163,15 @@ Inside the target app repo, ask your agent:
 
 > Create a **TaxValidation** feature from this curl: `curl -X POST https://…`
 
+or before the backend exists:
+
+> `/react-clean-architecture` create new feature applicationStatus — **use mock backend for now**
+
 or for screens only:
 
 > `/react-clean-architecture` I need to append on src/features/TaxStampValidation — design mode only
 
-The agent walks the checklist in [SKILL.md](skills/react-clean-architecture/SKILL.md): intake → confirmation tables → generate → register → audit → (design lane) → final report. Appending an endpoint or a screen to a feature the skill built earlier is automatic — the persisted spec provides full prior context, no re-asking.
+The agent walks the checklist in [SKILL.md](skills/react-clean-architecture/SKILL.md): intake → test-infra check (auto-installs `@testing-library/react-native` on first run) → confirmation tables → generate → register → audit → (design lane) → final report. Appending an endpoint or a screen to a feature the skill built earlier is automatic — the persisted spec provides full prior context, no re-asking. The mock-backend lane generates a `MockService` behind the real service interface; swapping to the live API later is a one-line DI change (the swap comment is generated with it).
 
 ---
 
@@ -157,7 +183,9 @@ The agent walks the checklist in [SKILL.md](skills/react-clean-architecture/SKIL
 | [DESIGN.md](skills/react-clean-architecture/DESIGN.md) | design lane: Figma → screens → simulator verification loop, RTL ground rules, navigation registration |
 | [SPEC_FORMAT.md](skills/react-clean-architecture/SPEC_FORMAT.md) | `feature-spec.json` schema + collision rules |
 | [AUDIT.md](skills/react-clean-architecture/AUDIT.md) | every audit check and how to fix each failure |
-| [COMPONENTS.md](skills/react-clean-architecture/COMPONENTS.md) | shared-components dictionary (props, variants, gotchas) used by the reuse gate |
+| [TOKEN_MAP.md](skills/react-clean-architecture/TOKEN_MAP.md) | Figma px/hex/variable → theme-token mapping used by the design lane |
+| [COMPONENTS.md](skills/react-clean-architecture/COMPONENTS.md) | shared-components dictionary (props, variants, gotchas) used by the reuse gate — kept honest by the `components-md` drift check in the audit |
+| [CHANGELOG.md](CHANGELOG.md) | what changed in each version, with the live-run findings that drove it |
 | [TOKEN_MAP.md](skills/react-clean-architecture/TOKEN_MAP.md) | Figma px/hex/variables → theme token mapping |
 | [CHANGELOG.md](CHANGELOG.md) | version history |
 | [examples/](skills/react-clean-architecture/examples/) | filled spec + full expected output tree |

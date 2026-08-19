@@ -8,6 +8,9 @@
 #   ./install.sh codex                       # Codex CLI, user-wide (~/.codex/skills + ~/.codex/AGENTS.md)
 #   ./install.sh codex  --project <dir>      # Codex CLI, one project (.agent-skills + AGENTS.md)
 #   ./install.sh agents --project <dir>      # any AGENTS.md-compatible agent (same as codex)
+#   ./install.sh tools                       # ONLY install the simulator touch tools (idb) —
+#                                            # for skills installed via npx skills / plugin
+#                                            # marketplace / manual copy, which skip this script
 #
 # Add --copy to copy instead of symlink (Claude target only; others always copy).
 # Add --no-tools to skip the idb simulator-touch-tool install (macOS only).
@@ -188,10 +191,14 @@ EOF
 
 # touch tools first (valid targets only) — non-fatal, see install_touch_tools
 case "$TARGET" in
-  claude|cursor|codex|agents) install_touch_tools ;;
+  claude|cursor|codex|agents|tools) install_touch_tools ;;
 esac
 
 case "$TARGET" in
+  tools)
+    # tools-only run: skill files untouched (for npx-skills/plugin/manual installs)
+    ;;
+
   claude)
     if [ -n "$PROJECT" ]; then
       need_project
