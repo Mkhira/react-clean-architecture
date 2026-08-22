@@ -1,5 +1,5 @@
-import type { VerifyProductCodeInput, VerifyProductCodeResult } from '../entities/VerifyProductCodeResult';
-import type { GetScanHistoryResult } from '../entities/GetScanHistoryResult';
+import type { VerifyProductCodeInput, VerifyProductCodeResult } from '../../domain/entities/VerifyProductCodeResult';
+import type { GetScanHistoryResult } from '../../domain/entities/GetScanHistoryResult';
 
 export interface IProductVerificationService {
     verifyProductCode(input: VerifyProductCodeInput): Promise<VerifyProductCodeResult>;

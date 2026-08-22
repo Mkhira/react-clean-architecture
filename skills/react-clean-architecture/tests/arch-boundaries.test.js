@@ -45,16 +45,16 @@ test('importSpecifiers: named, type-only, multi-line, side-effect, and export-fr
 
 test('domain importing a data DTO is flagged (the original P0 violation)', () => {
     const repo = makeFixtureRepo();
-    writeFeatureFile(repo, 'src/features/Dirty/domain/IServices/IDirtyService.ts',
+    writeFeatureFile(repo, 'src/features/Dirty/domain/repositories/IDirtyRepository.ts',
         `import type { XRequestDTO } from '../../data/dtos/XDTO';\nexport interface IDirtyService { x(p: XRequestDTO): Promise<void>; }\n`);
     const problems = archBoundaryProblems(repo, 'Dirty');
     assert.equal(problems.length, 1);
-    assert.match(problems[0], /IDirtyService\.ts imports '\.\.\/\.\.\/data\/dtos\/XDTO' \(outside domain\/\)/);
+    assert.match(problems[0], /IDirtyRepository\.ts imports '\.\.\/\.\.\/data\/dtos\/XDTO' \(outside domain\/\)/);
 });
 
 test('domain importing frameworks or @core is flagged; @domain/@shared are allowed', () => {
     const repo = makeFixtureRepo();
-    writeFeatureFile(repo, 'src/features/Dirty/domain/usecases/XUseCase.ts', [
+    writeFeatureFile(repo, 'src/features/Dirty/domain/use-cases/XUseCase.ts', [
         `import { useEffect } from 'react';`,
         `import axios from 'axios';`,
         `import { useQuery } from '@tanstack/react-query';`,
@@ -97,7 +97,7 @@ test('a generated POST feature (body + device + status) has ZERO boundary proble
     assert.equal(result.status, 0);
     assert.deepEqual(archBoundaryProblems(repo, 'OrderTracking'), []);
     // and the domain service interface takes the domain input, not the DTO
-    const iface = read(repo, 'src/features/OrderTracking/domain/IServices/IOrderTrackingService.ts');
+    const iface = read(repo, 'src/features/OrderTracking/data/services/IOrderTrackingService.ts');
     assert.match(iface, /input: TrackOrderInput/);
     assert.ok(!iface.includes('RequestDTO'), 'domain interface must not mention the transport DTO');
 });
@@ -107,14 +107,14 @@ test('audit reports arch-boundaries as a check row', () => {
     const { repo, specPath } = generateInto(spec);
     runScript('register-di.js', [specPath, '--repo', repo]);
     const result = runScript('audit.js', [specPath, '--repo', repo, '--skip-tsc', '--skip-jest']);
-    assert.match(result.stdout, /PASS +arch-boundaries/);
+    assert.match(result.stdout, /PASS:.*\barch-boundaries\b/);
 });
 
 // --------------------------------------------- error taxonomy (v1.8.0 #3) ----
 
 test('generated use case classifies 401/403 as AUTH_ERROR and ECONNABORTED as TIMEOUT', () => {
     const { repo } = generateInto(baseSpec());
-    const useCase = read(repo, 'src/features/OrderTracking/domain/usecases/TrackOrderUseCase.ts');
+    const useCase = read(repo, 'src/features/OrderTracking/domain/use-cases/TrackOrderUseCase.ts');
     assert.match(useCase, /httpStatus === 401 \|\| httpStatus === 403/);
     assert.match(useCase, /createOrderTrackingError\('AUTH_ERROR'/);
     assert.match(useCase, /'ECONNABORTED' \|\| transport\?\.code === 'ETIMEDOUT'/);

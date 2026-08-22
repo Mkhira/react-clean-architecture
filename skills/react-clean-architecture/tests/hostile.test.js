@@ -9,7 +9,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
-const { makeTmpDir, makeFixtureRepo, baseSpec, writeSpec, runScript, read, exists } = require('./helpers.js');
+const { makeTmpDir, makeFixtureRepo, baseSpec, writeSpec, runScript, read, exists, readManifest } = require('./helpers.js');
 
 function getSpec(overrides = {}) {
     const spec = baseSpec();
@@ -134,8 +134,8 @@ test('append re-running the SAME action is a full no-op (all files skipped, noth
     runScript('generate.js', [createPath, '--repo', repo]);
     const appendSpec = getSpec();
     appendSpec.mode = 'append';
-    const result = runScript('generate.js', [writeSpec(makeTmpDir('s'), appendSpec), '--repo', repo]);
-    const manifest = JSON.parse(result.stdout);
+    runScript('generate.js', [writeSpec(makeTmpDir('s'), appendSpec), '--repo', repo]);
+    const manifest = readManifest(repo);
     assert.equal(manifest.created.length, 0);
     assert.equal(manifest.needsManual.length, 0);
     const service = read(repo, 'src/features/OrderTracking/data/services/OrderTrackingService.ts');
@@ -197,5 +197,5 @@ test('case-variant feature name is refused instead of polluting the existing dir
     // exact-name re-run stays a legal idempotent no-op
     const rerun = runScript('generate.js', [writeSpec(makeTmpDir('s'), getSpec()), '--repo', repo]);
     assert.equal(rerun.status, 0);
-    assert.equal(JSON.parse(rerun.stdout).created.length, 0);
+    assert.equal(readManifest(repo).created.length, 0);
 });

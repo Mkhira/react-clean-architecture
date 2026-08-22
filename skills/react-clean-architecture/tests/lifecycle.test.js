@@ -40,7 +40,7 @@ test('CORE: POST with path AND query params — service/repo/interface signature
     const repository = read(repo, 'src/features/OrderTracking/data/repositories/OrderTrackingRepository.ts');
     assert.match(repository, /this\.apiService\.trackOrder\(input\.orderId, input, \{ notify: input\.notify \}\)/);
 
-    const iface = read(repo, 'src/features/OrderTracking/domain/IServices/IOrderTrackingService.ts');
+    const iface = read(repo, 'src/features/OrderTracking/data/services/IOrderTrackingService.ts');
     assert.match(iface, /trackOrder\(orderId: string, input: TrackOrderInput, query: \{ notify: string \}\): Promise<TrackOrderResult>;/);
     assert.ok(!iface.includes('data/dtos'), 'domain interface must not import from data/');
 });
@@ -209,7 +209,7 @@ export const isOrderTrackingError = (error: unknown): error is OrderTrackingErro
     const servicePath = path.join(featureDir, 'data/services/OrderTrackingService.ts');
     fs.writeFileSync(servicePath, fs.readFileSync(servicePath, 'utf8').replace('private async requestExternal', 'private async oldTransport'));
     // 3. hand-written use case content that must survive
-    const useCasePath = path.join(featureDir, 'domain/usecases/TrackOrderUseCase.ts');
+    const useCasePath = path.join(featureDir, 'domain/use-cases/TrackOrderUseCase.ts');
     const handWritten = fs.readFileSync(useCasePath, 'utf8').replace('// TODO(claude): implement business rules:', '// HAND WRITTEN RULES');
     fs.writeFileSync(useCasePath, handWritten);
     // 4. un-stamped persisted spec (pre-1.1.0)
@@ -236,9 +236,74 @@ export const isOrderTrackingError = (error: unknown): error is OrderTrackingErro
     assert.match(errors, /\.includes\(/, 'new membership guard');
 
     assert.match(read(repo, 'src/features/OrderTracking/data/services/OrderTrackingService.ts'), /private async requestExternal/);
-    assert.match(read(repo, 'src/features/OrderTracking/domain/usecases/TrackOrderUseCase.ts'), /HAND WRITTEN RULES/, 'hand-written use case preserved');
+    assert.match(read(repo, 'src/features/OrderTracking/domain/use-cases/TrackOrderUseCase.ts'), /HAND WRITTEN RULES/, 'hand-written use case preserved');
     const { SKILL_VERSION } = require('../scripts/generate.js');
     assert.ok(read(repo, 'src/features/OrderTracking/feature-spec.json').includes(`"skillVersion": "${SKILL_VERSION}"`));
+});
+
+test('migrate: pre-1.11.0 layout is relocated (IServices/IRepositories/usecases) with imports rewritten', () => {
+    const { repo } = fullFixture();
+    const featureDir = path.join(repo, 'src', 'features', 'OrderTracking');
+
+    // simulate an old-layout feature: move the three dirs back and restore the
+    // old import paths everywhere (interface, repository, service, use case, test)
+    const moveBack = (fromRel, toRel) => {
+        fs.mkdirSync(path.join(featureDir, toRel), { recursive: true });
+        for (const name of fs.readdirSync(path.join(featureDir, fromRel))) {
+            fs.renameSync(path.join(featureDir, fromRel, name), path.join(featureDir, toRel, name));
+        }
+        fs.rmdirSync(path.join(featureDir, fromRel));
+    };
+    moveBack('domain/use-cases', 'domain/usecases');
+    moveBack('domain/repositories', 'domain/IRepositories');
+    fs.renameSync(
+        path.join(featureDir, 'data/services/IOrderTrackingService.ts'),
+        (fs.mkdirSync(path.join(featureDir, 'domain/IServices'), { recursive: true }),
+        path.join(featureDir, 'domain/IServices/IOrderTrackingService.ts'))
+    );
+    const oldify = (relative, edits) => {
+        const file = path.join(featureDir, relative);
+        let content = fs.readFileSync(file, 'utf8');
+        for (const [from, to] of edits) content = content.replace(from, to);
+        fs.writeFileSync(file, content);
+    };
+    oldify('domain/IServices/IOrderTrackingService.ts', [["'../../domain/entities/", "'../entities/"]]);
+    oldify('data/services/OrderTrackingService.ts', [["'./IOrderTrackingService'", "'../../domain/IServices/IOrderTrackingService'"]]);
+    oldify('data/repositories/OrderTrackingRepository.ts', [
+        ["'../../domain/repositories/", "'../../domain/IRepositories/"],
+        ["'../services/IOrderTrackingService'", "'../../domain/IServices/IOrderTrackingService'"],
+    ]);
+    oldify('domain/usecases/TrackOrderUseCase.ts', [["'../repositories/", "'../IRepositories/"]]);
+    const testsDir = fs.readdirSync(featureDir).includes('test') ? 'test' : '__tests__';
+    oldify(`${testsDir}/TrackOrderUseCase.test.ts`, [
+        ["'../domain/use-cases/", "'../domain/usecases/"],
+        ["'../domain/repositories/", "'../domain/IRepositories/"],
+    ]);
+    // hand-written marker that must survive the relocation
+    oldify('domain/usecases/TrackOrderUseCase.ts', [['// TODO(claude): implement business rules:', '// HAND WRITTEN RULES']]);
+
+    const dry = runScript('migrate-feature.js', ['OrderTracking', '--repo', repo]);
+    const dryReport = JSON.parse(dry.stdout.slice(0, dry.stdout.lastIndexOf('}') + 1));
+    assert.equal(dry.status, 0, dry.stdout + dry.stderr);
+    assert.ok(dryReport.relocated.some((line) => line.includes('IServices')), 'dry run plans the relocation');
+    assert.ok(exists(repo, 'src/features/OrderTracking/domain/usecases/TrackOrderUseCase.ts'), 'dry run must not move files');
+
+    const applied = runScript('migrate-feature.js', ['OrderTracking', '--repo', repo, '--apply']);
+    assert.equal(applied.status, 0, applied.stdout + applied.stderr);
+
+    assert.ok(exists(repo, 'src/features/OrderTracking/data/services/IOrderTrackingService.ts'));
+    assert.ok(exists(repo, 'src/features/OrderTracking/domain/repositories/IOrderTrackingRepository.ts'));
+    assert.ok(exists(repo, 'src/features/OrderTracking/domain/use-cases/TrackOrderUseCase.ts'));
+    assert.ok(!exists(repo, 'src/features/OrderTracking/domain/IServices'), 'old dirs removed');
+    assert.ok(!exists(repo, 'src/features/OrderTracking/domain/IRepositories'), 'old dirs removed');
+    assert.ok(!exists(repo, 'src/features/OrderTracking/domain/usecases'), 'old dirs removed');
+
+    const useCase = read(repo, 'src/features/OrderTracking/domain/use-cases/TrackOrderUseCase.ts');
+    assert.match(useCase, /HAND WRITTEN RULES/, 'hand-written content moved, not regenerated');
+    assert.match(useCase, /'\.\.\/repositories\/IOrderTrackingRepository'/, 'old import path rewritten');
+    const testFile = read(repo, `src/features/OrderTracking/${testsDir}/TrackOrderUseCase.test.ts`);
+    assert.match(testFile, /'\.\.\/domain\/use-cases\/TrackOrderUseCase'/);
+    assert.match(testFile, /'\.\.\/domain\/repositories\/IOrderTrackingRepository'/);
 });
 
 test('migrate: refuses features without a persisted spec', () => {

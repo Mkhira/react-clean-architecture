@@ -43,6 +43,14 @@ function runScript(script, args, options = {}) {
     return { status: result.status, stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
 }
 
+/**
+ * generate.js prints a compact summary (counts + needsClaude/needsManual);
+ * the full file lists live in the on-disk manifest — read that for assertions.
+ */
+function readManifest(repo) {
+    return JSON.parse(fs.readFileSync(path.join(repo, '.claude-skill-manifest.json'), 'utf8'));
+}
+
 function makeFixtureRepo() {
     const repo = makeTmpDir('repo');
 
@@ -156,6 +164,156 @@ export class ConfigService implements IConfigService {
     return repo;
 }
 
+/**
+ * makeFixtureRepo + the navigation surface register-navigation.js edits,
+ * mirroring the real files' SHAPES: RouteContract/Routes use the app's 2-space
+ * indent; the page registry, SERVICES_DATA, and deep-linking map use 4-space.
+ */
+function makeNavFixtureRepo() {
+    const repo = makeFixtureRepo();
+
+    write(repo, 'src/core/navigation/routes/RouteContract.ts', `import type { Href } from 'expo-router';
+
+type RouteDefinition<Params> = {
+  toHref: Params extends undefined ? () => Href : (params: Params) => Href;
+};
+
+type RouteDefinitionStacks = {
+  tabs: {
+    root: RouteDefinition<undefined>;
+  };
+  serviceFlow: {
+    run: RouteDefinition<{ serviceId: string; step?: number }>;
+    integratedTariff: RouteDefinition<undefined>;
+  };
+};
+
+const routeDefinitionStacks: RouteDefinitionStacks = {
+  tabs: {
+    root: {
+      toHref: () => '/',
+    },
+  },
+  serviceFlow: {
+    run: {
+      toHref: ({ serviceId, step }) => ({
+        pathname: '/service-flow/[serviceId]',
+        params: step ? { serviceId, step } : { serviceId },
+      }),
+    },
+    integratedTariff: {
+      toHref: () => '/service-flow/integrated-tariff',
+    },
+  },
+};
+
+export const routeDefinitions = {
+  'tabs.root': routeDefinitionStacks.tabs.root,
+  'serviceFlow.run': routeDefinitionStacks.serviceFlow.run,
+  'serviceFlow.integratedTariff': routeDefinitionStacks.serviceFlow.integratedTariff,
+};
+`);
+
+    write(repo, 'src/core/navigation/routes/Routes.ts', `import type { AppRoute } from './RouteContract';
+
+export const Routes = {
+  tabs: {
+    root: (): AppRoute => ({ key: 'tabs.root' }),
+  },
+  serviceFlow: {
+    run: (serviceId: string, step?: number): AppRoute => ({
+      key: 'serviceFlow.run',
+      params: step ? { serviceId, step } : { serviceId },
+    }),
+    integratedTariff: (): AppRoute => ({ key: 'serviceFlow.integratedTariff' }),
+  },
+};
+`);
+
+    write(repo, 'src/presentation/service-flow/screens/pages/index.ts', `import type { ComponentType } from 'react';
+import { IntegratedTariffScreen } from '@features/integrated-tariff';
+
+export type ServiceFlowPageProps = {
+    initialStep?: number;
+};
+
+type ServiceFlowPageConfig = {
+    component: ComponentType<ServiceFlowPageProps>;
+    serviceId: string;
+    titleKey: string;
+    descriptionKey: string;
+};
+
+const registerServiceFlowPage = (
+    aliases: string[],
+    config: ServiceFlowPageConfig
+): Record<string, ServiceFlowPageConfig> =>
+    Object.fromEntries(aliases.map((alias) => [alias, config]));
+
+const serviceFlowPages: Record<string, ServiceFlowPageConfig> = {
+    ...registerServiceFlowPage(['integratedTariff', 'integrated-tariff'], {
+        component: IntegratedTariffScreen,
+        serviceId: 'integratedTariff',
+        titleKey: 'serviceFlow.pages.integratedTariff.title',
+        descriptionKey: 'serviceFlow.pages.integratedTariff.description',
+    }),
+};
+
+export const getServiceFlowPage = (serviceId: string): ServiceFlowPageConfig | undefined =>
+    serviceFlowPages[serviceId];
+`);
+
+    write(repo, 'src/presentation/services/models/servicesData.ts', `import { AppRoute } from '@core/navigation/routes/RouteContract';
+import { Routes } from '@core/navigation/routes/Routes';
+
+export type ServiceCost = 'paid' | 'free';
+export type ServiceTypeKey = 'tax' | 'zakat' | 'realEstate' | 'customs';
+export type ServiceUserType = 'citizen' | 'resident' | 'business' | 'retired';
+
+const ALL_USER_TYPES: ServiceUserType[] = ['citizen', 'resident', 'business', 'retired'];
+
+export const SERVICES_DATA = [
+    {
+        id: 'integrated-tariff',
+        title: 'services.serviceIntegratedTariff.title',
+        description: 'services.serviceIntegratedTariff.description',
+        screen: Routes.serviceFlow.integratedTariff(),
+        cost: 'free',
+        serviceTypes: ['customs'] as ServiceTypeKey[],
+        userTypes: ALL_USER_TYPES,
+        addedAt: Date.UTC(2026, 3, 20),
+        processingTimeMinutes: 10,
+        fees: 0,
+    },
+] as const;
+`);
+
+    write(repo, 'src/core/deepLinking/DeepLinkingService.ts', `import type { AppRoute } from '../navigation/routes/RouteContract';
+import { Routes } from '../navigation/routes/Routes';
+
+const dedicatedServiceFlowRoutes: Record<string, () => AppRoute> = {
+    'integrated-tariff': () => Routes.serviceFlow.integratedTariff(),
+    integratedTariff: () => Routes.serviceFlow.integratedTariff(),
+};
+
+export const resolveDedicated = (serviceId: string): AppRoute | null => {
+    const dedicatedRoute = dedicatedServiceFlowRoutes[serviceId];
+    return dedicatedRoute ? dedicatedRoute() : null;
+};
+`);
+
+    for (const lang of ['en', 'ar']) {
+        write(repo, `src/core/localization/translations/${lang}.json`, JSON.stringify({
+            common: { ok: lang === 'ar' ? 'حسنا' : 'OK' },
+            services: {
+                serviceIntegratedTariff: { title: 't', description: 'd' },
+            },
+        }, null, 4) + '\n');
+    }
+
+    return repo;
+}
+
 /** A minimal, valid create-mode spec the tests can clone and tweak. */
 function baseSpec(overrides = {}) {
     return {
@@ -206,4 +364,4 @@ function writeSpec(dir, spec, name = 'spec.json') {
     return specPath;
 }
 
-module.exports = { makeTmpDir, makeFixtureRepo, baseSpec, writeSpec, runScript, write, read, exists, SCRIPTS };
+module.exports = { makeTmpDir, makeFixtureRepo, makeNavFixtureRepo, baseSpec, writeSpec, runScript, write, read, exists, readManifest, SCRIPTS };

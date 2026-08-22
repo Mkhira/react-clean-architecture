@@ -1,6 +1,6 @@
 import type { IHttpClient } from '@core/http/IHttpClient';
 import type { IConfigService } from '@core/config/IConfigService';
-import type { IProductVerificationService } from '../../domain/IServices/IProductVerificationService';
+import type { IProductVerificationService } from './IProductVerificationService';
 import { PRODUCT_VERIFICATION_ENDPOINTS } from '../endpoints/endpoints';
 import { createProductVerificationError } from '../../domain/errors/ProductVerificationError';
 import type { VerifyProductCodeResponseDTO } from '../dtos/VerifyProductCodeDTO';

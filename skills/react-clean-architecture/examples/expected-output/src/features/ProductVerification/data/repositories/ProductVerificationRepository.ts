@@ -1,5 +1,5 @@
-import type { IProductVerificationRepository } from '../../domain/IRepositories/IProductVerificationRepository';
-import type { IProductVerificationService } from '../../domain/IServices/IProductVerificationService';
+import type { IProductVerificationRepository } from '../../domain/repositories/IProductVerificationRepository';
+import type { IProductVerificationService } from '../services/IProductVerificationService';
 import type { VerifyProductCodeResult, VerifyProductCodeInput } from '../../domain/entities/VerifyProductCodeResult';
 import type { GetScanHistoryResult, GetScanHistoryInput } from '../../domain/entities/GetScanHistoryResult';
 

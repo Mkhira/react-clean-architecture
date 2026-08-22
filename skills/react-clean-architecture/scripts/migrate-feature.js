@@ -11,15 +11,20 @@
  *
  * Strategy — regenerate only what the machine owns, preserve what hands wrote:
  *
+ *   RELOCATED FIRST (pre-1.11.0 layout → repo convention, content moved as-is,
+ *   old import paths rewritten in preserved files):
+ *     domain/IServices/*  → data/services/* · domain/IRepositories/* →
+ *     domain/repositories/* · domain/usecases/* → domain/use-cases/*
+ *
  *   REGENERATED (machine-owned; transport + contracts):
  *     data/endpoints/endpoints.ts · data/services/<F>Service.ts ·
- *     data/repositories/<F>Repository.ts · domain/IServices/* ·
- *     domain/IRepositories/* · domain/errors/<F>Error.ts
+ *     data/services/I<F>Service.ts · data/repositories/<F>Repository.ts ·
+ *     domain/repositories/* · domain/errors/<F>Error.ts
  *     (hand-added error CODES are extracted from the existing file and merged
  *      into the new one — a 1.0.0 union or a 1.1.0+ values array both parse)
  *
  *   PRESERVED (hand-written or hand-tuned; never touched):
- *     domain/usecases/* (business rules) · data/mappers/* (status derivation) ·
+ *     domain/use-cases/* (business rules) · data/mappers/* (status derivation) ·
  *     __tests__/* (rule tests) · presentation/** (screens/translations) ·
  *     data/dtos/* and domain/entities/* (types may carry hand-fixed overrides —
  *     pass --include-types to regenerate them too)
@@ -53,12 +58,77 @@ function isMachineOwned(relative, f, includeTypes) {
     if (inFeature(path.join('data', 'endpoints') + path.sep)) return true;
     if (inFeature(path.join('data', 'services') + path.sep)) return true;
     if (inFeature(path.join('data', 'repositories') + path.sep)) return true;
-    if (inFeature(path.join('domain', 'IServices') + path.sep)) return true;
-    if (inFeature(path.join('domain', 'IRepositories') + path.sep)) return true;
+    if (inFeature(path.join('domain', 'repositories') + path.sep)) return true;
     if (inFeature(path.join('domain', 'errors') + path.sep)) return true;
     if (includeTypes && inFeature(path.join('data', 'dtos') + path.sep)) return true;
     if (includeTypes && inFeature(path.join('domain', 'entities') + path.sep)) return true;
     return false;
+}
+
+/**
+ * Pre-1.11.0 layout → repo convention. Files move as-is (hand-written content
+ * preserved); afterwards every .ts file still holding an old-layout import path
+ * is rewritten (`domain/IServices` and `domain/`+`data/` are sibling dirs, so a
+ * plain segment substitution keeps every relative specifier correct).
+ */
+const RELOCATIONS = [
+    [path.join('domain', 'IServices'), path.join('data', 'services')],
+    [path.join('domain', 'IRepositories'), path.join('domain', 'repositories')],
+    [path.join('domain', 'usecases'), path.join('domain', 'use-cases')],
+];
+const IMPORT_REWRITES = [
+    [/domain\/IServices\//g, 'data/services/'],
+    [/IRepositories\//g, 'repositories/'],
+    [/\/usecases\//g, '/use-cases/'],
+];
+
+function tsFilesUnder(dir) {
+    if (!fs.existsSync(dir)) return [];
+    return fs.readdirSync(dir, { recursive: true, withFileTypes: true })
+        .filter((entry) => entry.isFile() && /\.tsx?$/.test(entry.name))
+        .map((entry) => path.join(entry.parentPath ?? entry.path, entry.name));
+}
+
+function relocateOldLayout(repo, feature, apply, report) {
+    const base = path.join(repo, 'src', 'features', feature);
+    // repo-relative paths a dry run WOULD create — the plan loop must not
+    // report them as missing when --apply hasn't moved them yet
+    const pendingTargets = new Set();
+    for (const [from, to] of RELOCATIONS) {
+        const fromDir = path.join(base, from);
+        if (!fs.existsSync(fromDir)) continue;
+        const toDir = path.join(base, to);
+        for (const name of fs.readdirSync(fromDir)) {
+            const target = path.join(toDir, name);
+            if (fs.existsSync(target)) {
+                report.problems.push(`${path.join(to, name)}: exists in BOTH old and new layout — resolve by hand before migrating`);
+                continue;
+            }
+            if (apply) {
+                fs.mkdirSync(toDir, { recursive: true });
+                fs.renameSync(path.join(fromDir, name), target);
+            } else {
+                pendingTargets.add(path.relative(repo, target));
+            }
+            report.relocated.push(`${path.join(from, name)} -> ${path.join(to, name)}`);
+        }
+        if (apply && fs.existsSync(fromDir) && !fs.readdirSync(fromDir).length) fs.rmdirSync(fromDir);
+    }
+    if (!report.relocated.length) return pendingTargets;
+    if (!apply) {
+        report.rewrittenImports.push('(dry run — old-layout import paths rewritten on --apply)');
+        return pendingTargets;
+    }
+    for (const file of tsFilesUnder(base)) {
+        const content = fs.readFileSync(file, 'utf8');
+        let next = content;
+        for (const [pattern, replacement] of IMPORT_REWRITES) next = next.replace(pattern, replacement);
+        if (next !== content) {
+            fs.writeFileSync(file, next);
+            report.rewrittenImports.push(path.relative(repo, file));
+        }
+    }
+    return pendingTargets;
 }
 
 /** Every 'SCREAMING_SNAKE' code quoted in the existing errors file (union OR array form). */
@@ -113,12 +183,16 @@ function main() {
         feature,
         fromVersion,
         toVersion: SKILL_VERSION,
+        relocated: [],
+        rewrittenImports: [],
         updated: [],
         unchanged: [],
         preserved: [],
         mergedErrorCodes: [],
         problems: [],
     };
+
+    const pendingRelocation = relocateOldLayout(repo, feature, apply, report);
 
     for (const [relative, plannedContent] of planned) {
         const absolute = path.join(repo, relative);
@@ -140,6 +214,10 @@ function main() {
             continue;
         }
         if (existing === null) {
+            if (pendingRelocation.has(relative)) {
+                report.updated.push(`${relative} (after relocation)`);
+                continue;
+            }
             report.problems.push(`${relative}: expected file missing — run generate.js in append/create mode instead of migrating`);
             continue;
         }

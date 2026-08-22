@@ -1,6 +1,6 @@
 import { IUseCase } from '@domain/shared/IUseCase';
 import { Result } from '@shared/types/Result';
-import type { IProductVerificationRepository } from '../IRepositories/IProductVerificationRepository';
+import type { IProductVerificationRepository } from '../repositories/IProductVerificationRepository';
 import type { VerifyProductCodeResult, VerifyProductCodeInput } from '../entities/VerifyProductCodeResult';
 import { createProductVerificationError, isProductVerificationError, type ProductVerificationError } from '../errors/ProductVerificationError';
 

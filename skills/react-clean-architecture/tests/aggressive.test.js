@@ -11,7 +11,7 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 const { parse } = require('../scripts/parse-curl.js');
 const { generateTypes } = require('../scripts/json-to-dto.js');
-const { makeTmpDir, makeFixtureRepo, baseSpec, writeSpec, runScript, read, write, exists } = require('./helpers.js');
+const { makeTmpDir, makeFixtureRepo, baseSpec, writeSpec, runScript, read, write, exists, readManifest } = require('./helpers.js');
 
 // ------------------------------------------------------ parse-curl (wild) ----
 
@@ -309,7 +309,7 @@ test('append GET to a POST-only feature creates queries.ts with the hook + needs
     const appendSpec = getEndpoint({ cache: '8-hours' });
     appendSpec.mode = 'append';
     const result = runScript('generate.js', [writeSpec(makeTmpDir('s'), appendSpec), '--repo', repo]);
-    const manifest = JSON.parse(result.stdout);
+    const manifest = readManifest(repo);
     assert.ok(manifest.created.includes('src/features/OrderTracking/presentation/queries.ts'));
     const queries = read(repo, 'src/features/OrderTracking/presentation/queries.ts');
     assert.match(queries, /export const useListOrdersQuery/);
@@ -326,7 +326,7 @@ test('append GET to a feature that already has queries.ts inserts the hook at th
     const appendSpec = getEndpoint({ action: 'getOrderDetail', path: '/v1/orders/{id}', pathParams: [{ name: 'id', type: 'string' }] });
     appendSpec.mode = 'append';
     const result = runScript('generate.js', [writeSpec(makeTmpDir('s'), appendSpec), '--repo', repo]);
-    const manifest = JSON.parse(result.stdout);
+    const manifest = readManifest(repo);
     assert.ok(manifest.patched.includes('src/features/OrderTracking/presentation/queries.ts'));
     const queries = read(repo, 'src/features/OrderTracking/presentation/queries.ts');
     assert.match(queries, /export const useListOrdersQuery/, 'existing hook stays');

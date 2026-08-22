@@ -22,11 +22,11 @@ function auditedFixture({ mutate } = {}) {
 test('happy path: a generated+registered feature passes every static check', () => {
     const { result } = auditedFixture();
     assert.equal(result.status, 0, result.stdout);
-    assert.match(result.stdout, /PASS structure/);
-    assert.match(result.stdout, /PASS di-wiring/);
-    assert.match(result.stdout, /PASS i18n/);
-    assert.match(result.stdout, /PASS env-files/);
-    assert.match(result.stdout, /PASS secret-hygiene/);
+    assert.match(result.stdout, /PASS:.*\bstructure\b/);
+    assert.match(result.stdout, /PASS:.*\bdi-wiring\b/);
+    assert.match(result.stdout, /PASS:.*\bi18n\b/);
+    assert.match(result.stdout, /PASS:.*\benv-files\b/);
+    assert.match(result.stdout, /PASS:.*\bsecret-hygiene\b/);
     assert.match(result.stdout, /RESULT: PASS/);
     // rules exist but weren't hand-filled in this fixture → surfaced as a warning, not silence
     assert.match(result.stdout, /WARN todos/);
@@ -116,7 +116,7 @@ test('status-derivation: an unfilled status TODO blocks the audit until hand-wri
         "\n$1status: dto.OrderStatus === 'IN_TRANSIT' ? 'ok' : 'failed',"
     ));
     const unblocked = runScript('audit.js', [specPath, '--repo', repo, ...AUDIT_FLAGS]);
-    assert.match(unblocked.stdout, /PASS status-derivation/);
+    assert.match(unblocked.stdout, /PASS:.*\bstatus-derivation\b/);
 });
 
 test('reuse-first: re-implementing a shared util is flagged; mapper-local cleanString is exempt', () => {
@@ -159,7 +159,7 @@ test('--persist-spec: written only on PASS, and sanitized (no secrets, env refer
     assert.match(persisted, /"OrderNumber": "input"/);
 });
 
-test('audit reminders: session fields and expo-router navigation are always surfaced', () => {
+test('audit reminders: session fields and expo-router navigation surfaced on passing runs', () => {
     const spec = baseSpec();
     spec.endpoints[0].requestFieldSources.CustomerId = 'session';
     spec.endpoints[0].requestSample.CustomerId = 7;

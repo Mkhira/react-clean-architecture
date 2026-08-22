@@ -446,7 +446,7 @@ function endpointUrlExpr(f, e) {
 
 /**
  * Body endpoints: the service (data layer) converts the domain input into the
- * transport payload — the DTO never crosses into domain/IServices.
+ * transport payload — the DTO never crosses into the service contract's signatures.
  */
 function payloadBuildLines(e) {
     if (!e.hasBody) return '';
@@ -615,7 +615,7 @@ function serviceFile(f) {
     const imports = [];
     if (f.hasApp) imports.push(`import type { IHttpClient } from '@core/http/IHttpClient';`);
     if (f.hasExternal) imports.push(`import type { IConfigService } from '@core/config/IConfigService';`);
-    imports.push(`import type { ${f.serviceInterface} } from '../../domain/IServices/${f.serviceInterface}';`);
+    imports.push(`import type { ${f.serviceInterface} } from './${f.serviceInterface}';`);
     imports.push(`import { ${f.FEATURE_SNAKE}_ENDPOINTS } from '../endpoints/endpoints';`);
     if (f.hasExternal) imports.push(`import { ${f.errorFactory} } from '../../domain/errors/${f.errorType}';`);
     for (const e of f.endpoints) {
@@ -670,7 +670,7 @@ function mockServiceMethod(f, e) {
 
 function mockServiceFile(f) {
     const imports = [
-        `import type { ${f.serviceInterface} } from '../../domain/IServices/${f.serviceInterface}';`,
+        `import type { ${f.serviceInterface} } from './${f.serviceInterface}';`,
     ];
     for (const e of f.endpoints) {
         if (e.hasResponse) {
@@ -733,8 +733,8 @@ function repositoryMethod(f, e) {
 
 function repositoryFile(f) {
     const imports = [
-        `import type { ${f.repositoryInterface} } from '../../domain/IRepositories/${f.repositoryInterface}';`,
-        `import type { ${f.serviceInterface} } from '../../domain/IServices/${f.serviceInterface}';`,
+        `import type { ${f.repositoryInterface} } from '../../domain/repositories/${f.repositoryInterface}';`,
+        `import type { ${f.serviceInterface} } from '../services/${f.serviceInterface}';`,
     ];
     for (const e of f.endpoints) {
         const names = [e.hasResponse ? e.entity : null, e.inputFields.length ? e.input : null].filter(Boolean);
@@ -757,9 +757,11 @@ function serviceInterfaceFile(f) {
     const imports = [];
     const signatures = f.endpoints.map((e) => {
         const args = serviceMethodArgs(e).join(', ');
-        // domain-only imports — the transport DTO never appears here
+        // signatures speak domain entities, never transport DTOs — but the file
+        // lives in data/services (repo convention: only the repository contract
+        // is a domain port; this one is a data-layer contract)
         const names = [e.hasBody && e.inputFields.length ? e.input : null, e.hasResponse ? e.entity : null].filter(Boolean);
-        if (names.length) imports.push(`import type { ${names.join(', ')} } from '../entities/${e.entity}';`);
+        if (names.length) imports.push(`import type { ${names.join(', ')} } from '../../domain/entities/${e.entity}';`);
         return `    ${e.actionCamel}(${args}): Promise<${e.returnType}>;`;
     });
     return `${[...new Set(imports)].join('\n')}
@@ -846,7 +848,7 @@ function useCaseFile(f, e) {
 
     return `import { ${interfaceName} } from '@domain/shared/IUseCase';
 import { Result } from '@shared/types/Result';
-import type { ${f.repositoryInterface} } from '../IRepositories/${f.repositoryInterface}';
+import type { ${f.repositoryInterface} } from '../repositories/${f.repositoryInterface}';
 ${entityImports.length ? `import type { ${entityImports.join(', ')} } from '../entities/${e.entity}';\n` : ''}import { ${f.errorFactory}, ${f.errorGuard}, type ${f.errorType} } from '../errors/${f.errorType}';
 
 ${storyComment}export class ${e.useCase} implements ${implementsClause} {
@@ -1255,10 +1257,10 @@ function useCaseTestFile(f, e) {
         ? `\n    // TODO(claude): add one test per business rule:\n${e.rules.map((rule) => `    //   - ${rule}`).join('\n')}\n`
         : '';
 
-    return `import { ${e.useCase} } from '../domain/usecases/${e.useCase}';
+    return `import { ${e.useCase} } from '../domain/use-cases/${e.useCase}';
 import { ${f.errorFactory} } from '../domain/errors/${f.errorType}';
 import { Result } from '@shared/types/Result';
-import type { ${f.repositoryInterface} } from '../domain/IRepositories/${f.repositoryInterface}';
+import type { ${f.repositoryInterface} } from '../domain/repositories/${f.repositoryInterface}';
 
 // several shared utils import the @shared/components barrel, which drags
 // native-only modules into jest — mock it so hand-written rules can reuse
@@ -1346,8 +1348,8 @@ function buildFilePlan(spec, f, testsDir = 'test') {
         files.set(path.join(base, 'data', 'services', `${f.mockServiceClass}.ts`), mockServiceFile(f));
     }
     files.set(path.join(base, 'data', 'repositories', `${f.repositoryClass}.ts`), repositoryFile(f));
-    files.set(path.join(base, 'domain', 'IServices', `${f.serviceInterface}.ts`), serviceInterfaceFile(f));
-    files.set(path.join(base, 'domain', 'IRepositories', `${f.repositoryInterface}.ts`), repositoryInterfaceFile(f));
+    files.set(path.join(base, 'data', 'services', `${f.serviceInterface}.ts`), serviceInterfaceFile(f));
+    files.set(path.join(base, 'domain', 'repositories', `${f.repositoryInterface}.ts`), repositoryInterfaceFile(f));
     files.set(path.join(base, 'domain', 'errors', `${f.errorType}.ts`), errorsFile(f));
     files.set(path.join(base, 'presentation', 'controller.ts'), controllerFile(f));
     if (f.endpoints.some((e) => e.method === 'GET')) {
@@ -1374,7 +1376,7 @@ function buildFilePlan(spec, f, testsDir = 'test') {
         if (e.hasResponse || e.inputFields.length) {
             perEndpoint.set(path.join(base, 'domain', 'entities', `${e.entity}.ts`), entityFile(f, e));
         }
-        perEndpoint.set(path.join(base, 'domain', 'usecases', `${e.useCase}.ts`), useCaseFile(f, e));
+        perEndpoint.set(path.join(base, 'domain', 'use-cases', `${e.useCase}.ts`), useCaseFile(f, e));
         if (e.hasResponse || e.hasBody) {
             perEndpoint.set(path.join(base, testsDir, `${e.mapper}.test.ts`), mapperTestFile(f, e));
         }
@@ -1437,7 +1439,7 @@ function repositoryEndpointImports(f, e) {
 function interfaceEndpointImports(f, e, forService) {
     const imports = [];
     if (forService) {
-        // domain-only imports — the transport DTO never appears in domain/IServices
+        // entity-only signatures — the transport DTO never appears in the service contract
         const names = [e.hasBody && e.inputFields.length ? e.input : null, e.hasResponse ? e.entity : null].filter(Boolean);
         if (names.length) imports.push(`import type { ${names.join(', ')} } from '../entities/${e.entity}';`);
     } else {
@@ -1506,13 +1508,13 @@ function appendFeature(repo, spec, f, manifest) {
             }]
             : []),
         {
-            file: path.join(base, 'domain', 'IServices', `${f.serviceInterface}.ts`),
+            file: path.join(base, 'data', 'services', `${f.serviceInterface}.ts`),
             anchor: '// <create-feature:signatures>',
             text: (e) => `    ${e.actionCamel}(${serviceMethodArgs(e).join(', ')}): Promise<${e.returnType}>;`,
             imports: (e) => interfaceEndpointImports(f, e, true),
         },
         {
-            file: path.join(base, 'domain', 'IRepositories', `${f.repositoryInterface}.ts`),
+            file: path.join(base, 'domain', 'repositories', `${f.repositoryInterface}.ts`),
             anchor: '// <create-feature:signatures>',
             text: (e) => `    ${e.actionCamel}(${e.inputFields.length ? `input: ${e.input}` : ''}): Promise<${e.returnType}>;`,
             imports: (e) => interfaceEndpointImports(f, e, false),
@@ -1751,6 +1753,23 @@ function validateSpec(spec) {
 
 // ------------------------------------------------------------------ main ----
 
+// stdout stays machine-readable but compact: file lists collapse to counts
+// (the full manifest is on disk for anyone who needs the paths), while the
+// actionable lists — Claude's hand-edit work — are printed verbatim.
+function summarizeManifest(manifest) {
+    return {
+        status: manifest.needsManual.length ? 'NEEDS_MANUAL' : 'GENERATED',
+        feature: manifest.feature,
+        mode: manifest.mode,
+        created: manifest.created.length,
+        skipped: manifest.skipped.length,
+        patched: manifest.patched.length,
+        needsClaude: manifest.needsClaude,
+        needsManual: manifest.needsManual,
+        manifest: '.claude-skill-manifest.json',
+    };
+}
+
 function main() {
     const argv = process.argv.slice(2);
     if (!argv.length || argv.includes('--help') || argv.includes('-h')) {
@@ -1807,7 +1826,7 @@ function main() {
                 `append everything by hand, matching that feature's own layout and conventions (even singular folder names). No files were created.`
             );
             fs.writeFileSync(path.join(repo, '.claude-skill-manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
-            console.log(JSON.stringify(manifest, null, 2));
+            console.log(JSON.stringify(summarizeManifest(manifest), null, 2));
             return 2;
         }
     }
@@ -1830,7 +1849,7 @@ function main() {
     }
 
     for (const e of f.endpoints) {
-        manifest.needsClaude.push(`src/features/${f.feature}/domain/usecases/${e.useCase}.ts — fill execute() business rules${e.statusEnum ? ` + status derivation in ${e.mapper}.ts` : ''}`);
+        manifest.needsClaude.push(`src/features/${f.feature}/domain/use-cases/${e.useCase}.ts — fill execute() business rules${e.statusEnum ? ` + status derivation in ${e.mapper}.ts` : ''}`);
     }
     if (spec.mode === 'create') {
         manifest.needsClaude.push(`src/features/${f.feature}/presentation/translations/ar.ts — replace placeholder Arabic strings (use the user story's Arabic text when present)`);
@@ -1840,7 +1859,7 @@ function main() {
     }
 
     fs.writeFileSync(path.join(repo, '.claude-skill-manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
-    console.log(JSON.stringify(manifest, null, 2));
+    console.log(JSON.stringify(summarizeManifest(manifest), null, 2));
     return manifest.needsManual.length ? 2 : 0;
 }
 
@@ -1848,6 +1867,6 @@ if (require.main === module) {
     process.exit(main());
 }
 
-const SKILL_VERSION = '1.8.0';
+const SKILL_VERSION = '1.11.0';
 
 module.exports = { featureModel, buildFilePlan, testsDirName, validateSpec, pascal, camel, snakeUpper, kebab, queryKeyName, queryKeyValue, SKILL_VERSION };

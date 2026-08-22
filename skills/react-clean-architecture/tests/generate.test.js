@@ -2,7 +2,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { featureModel } = require('../scripts/generate.js');
-const { makeTmpDir, makeFixtureRepo, baseSpec, writeSpec, runScript, read, exists, write } = require('./helpers.js');
+const { makeTmpDir, makeFixtureRepo, baseSpec, writeSpec, runScript, read, exists, write, readManifest } = require('./helpers.js');
 
 // ---------------------------------------------------------------- naming ----
 
@@ -41,7 +41,7 @@ function generateInto(spec) {
     const repo = makeFixtureRepo();
     const specPath = writeSpec(makeTmpDir('spec'), spec);
     const result = runScript('generate.js', [specPath, '--repo', repo]);
-    return { repo, specPath, result, manifest: JSON.parse(result.stdout) };
+    return { repo, specPath, result, manifest: readManifest(repo) };
 }
 
 test('create mode: full tree, anchors, and manifest; never overwrites on re-run', () => {
@@ -54,7 +54,7 @@ test('create mode: full tree, anchors, and manifest; never overwrites on re-run'
     for (const file of [
         `${base}/data/endpoints/endpoints.ts`,
         `${base}/data/services/OrderTrackingService.ts`,
-        `${base}/domain/usecases/TrackOrderUseCase.ts`,
+        `${base}/domain/use-cases/TrackOrderUseCase.ts`,
         `${base}/test/TrackOrderMapper.test.ts`,
         `${base}/presentation/controller.ts`,
         `${base}/presentation/screens/OrderTrackingScreen.tsx`,
@@ -69,7 +69,8 @@ test('create mode: full tree, anchors, and manifest; never overwrites on re-run'
 
     // second run: everything already exists → skipped, nothing clobbered
     const before = read(repo, `${base}/data/services/OrderTrackingService.ts`);
-    const rerun = JSON.parse(runScript('generate.js', [specPath, '--repo', repo]).stdout);
+    runScript('generate.js', [specPath, '--repo', repo]);
+    const rerun = readManifest(repo);
     assert.equal(rerun.created.length, 0);
     assert.equal(rerun.skipped.length, manifest.created.length);
     assert.equal(read(repo, `${base}/data/services/OrderTrackingService.ts`), before);
@@ -121,7 +122,7 @@ test('response "none": Result<void>, no ResponseDTO, no toDomain', () => {
     spec.endpoints[0].responseSample = null;
     spec.endpoints[0].dateFields = [];
     const { repo } = generateInto(spec);
-    const useCase = read(repo, 'src/features/OrderTracking/domain/usecases/TrackOrderUseCase.ts');
+    const useCase = read(repo, 'src/features/OrderTracking/domain/use-cases/TrackOrderUseCase.ts');
     assert.match(useCase, /Result<void, OrderTrackingError>/);
     const dto = read(repo, 'src/features/OrderTracking/data/dtos/TrackOrderDTO.ts');
     assert.ok(!dto.includes('ResponseDTO'));
@@ -175,7 +176,8 @@ test('append mode: inserts at anchors with imports, idempotent on re-run', () =>
     }];
     const specPath = writeSpec(makeTmpDir('spec'), appendSpec);
 
-    const first = JSON.parse(runScript('generate.js', [specPath, '--repo', repo]).stdout);
+    runScript('generate.js', [specPath, '--repo', repo]);
+    const first = readManifest(repo);
     assert.ok(first.created.some((file) => file.endsWith('CancelOrderUseCase.ts')));
     assert.ok(first.patched.some((file) => file.endsWith('endpoints.ts')));
     assert.equal(first.needsManual.length, 0);
@@ -186,12 +188,13 @@ test('append mode: inserts at anchors with imports, idempotent on re-run', () =>
     assert.match(service, /import type \{ CancelOrderInput \} from '\.\.\/\.\.\/domain\/entities\/CancelOrderResult';/);
     assert.match(service, /import \{ CancelOrderMapper \} from '\.\.\/mappers\/CancelOrderMapper';/);
     assert.ok(!service.includes('CancelOrderRequestDTO'), 'RequestDTO must stay inside the mapper');
-    const iface = read(repo, 'src/features/OrderTracking/domain/IRepositories/IOrderTrackingRepository.ts');
+    const iface = read(repo, 'src/features/OrderTracking/domain/repositories/IOrderTrackingRepository.ts');
     assert.match(iface, /cancelOrder\(input: CancelOrderInput\): Promise<void>;/);
 
     // idempotent: second append changes nothing
     const before = service;
-    const second = JSON.parse(runScript('generate.js', [specPath, '--repo', repo]).stdout);
+    runScript('generate.js', [specPath, '--repo', repo]);
+    const second = readManifest(repo);
     assert.equal(second.created.length, 0);
     assert.equal(second.patched.length, 0);
     assert.equal(read(repo, 'src/features/OrderTracking/data/services/OrderTrackingService.ts'), before);
@@ -202,7 +205,7 @@ test('append to a pre-skill feature: NO files created, NEEDS_MANUAL fallback', (
     const appendSpec = baseSpec({ feature: 'legacy', mode: 'append' });
     const specPath = writeSpec(makeTmpDir('spec'), appendSpec);
     const result = runScript('generate.js', [specPath, '--repo', repo]);
-    const manifest = JSON.parse(result.stdout);
+    const manifest = readManifest(repo);
     assert.equal(result.status, 2);
     assert.equal(manifest.created.length, 0);
     assert.match(manifest.needsManual[0], /not a skill-generated feature/);
@@ -221,7 +224,8 @@ test('append that adds a FIRST external endpoint to an app-only service reports 
     const appendSpec = baseSpec({ mode: 'append' });
     appendSpec.endpoints = [{ ...baseSpec().endpoints[0], action: 'syncOrder', path: '/v1/orders/sync' }];
     const specPath = writeSpec(makeTmpDir('spec'), appendSpec);
-    const manifest = JSON.parse(runScript('generate.js', [specPath, '--repo', repo]).stdout);
+    runScript('generate.js', [specPath, '--repo', repo]);
+    const manifest = readManifest(repo);
     assert.ok(manifest.needsManual.some((note) => note.includes('ctor lacks configService')));
     assert.ok(manifest.needsManual.some((note) => note.includes('requestExternal')));
 });

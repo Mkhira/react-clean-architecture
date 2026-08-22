@@ -2,15 +2,92 @@
 
 Runs in **full** mode (after backend generate/register/audit) and **design-only** mode.
 Inputs: the spec's `design` block (fileKey + per-screen node IDs + flow transitions,
-collected in SKILL.md Step 2c), the user story, and the service-card values (defaults
-unless the user edited them). Reference implementation for every convention:
-`src/features/integrated-tariff/presentation` in the target repo.
+collected in the Screen collection section below — SKILL.md Step 2c routes here), the user
+story, and the service-card values (defaults unless the user edited them). Reference
+implementation for every convention: `src/features/integrated-tariff/presentation` in the
+target repo.
 
 References shipped with this skill:
 - [TOKEN_MAP.md](TOKEN_MAP.md) — Figma px/hex/variable → theme token mapping (verified values)
 - [COMPONENTS.md](COMPONENTS.md) — every `@shared/components` component: props, variants,
   gotchas, usage. **Read the relevant entries BEFORE picking components — never re-read the
   component sources first.**
+
+## Screen collection (SKILL.md Step 2c — run at intake, before anything is built)
+
+Two intake styles — detect from the user's first design paste:
+
+**A. Flow description (PREFERRED).** The user narrates the flow in
+free text, links mixed with prose, e.g.: *"this is my dashboard main screen `<link>`; the
+'متابعة للسداد' button opens `<link>`; 'ادفع الآن' opens this modal sheet `<link>`; the
+search button opens the results screen `<link>`"*. Any narration around the links
+(role words — screen/sheet/modal/results; transition verbs — opens/redirects/shows; named
+buttons) selects this style. Parse it — do NOT run the loop in B:
+
+1. Every link the narration presents as its own screen/sheet/modal is ONE screen unit. The
+   narration order is the build order; the screen described as main/default/first is the
+   flow host. Links pasted as attachments of a screen (states, dropdowns) stay components of
+   that unit, exactly as in B.
+2. Record every described transition as an edge — `{from, trigger (the button/action text),
+   to, presentation: "push" | "sheet" | "modal"}`. **Edges are built, not decoration**: the
+   design lane wires each trigger to a real handler (§2).
+3. Fetch node names via `get_metadata` for every link, then show ONE summary table —
+   screens (name, node-id, role) + transitions (from → trigger → to) + the service-card
+   defaults row (below) — and ask a single confirmation: "correct, or edit #N / edit card?".
+   Never guess silently, and never split this confirmation into multiple questions.
+
+**B. Bare links, no narration (fallback loop)** — collect sequentially, ONE question per
+message:
+
+1. Ask ONLY for **screen 1**: its Figma link plus the links of its attached components in the
+   same paste, lightly labeled — `screen:` for the frame, `sheet:` / `dropdown:` / `modal:`
+   for overlay components, `state:empty` / `state:error` / … for extra state frames. One
+   screen unit = the screen + everything pasted with it. **Unlabeled links**: treat the first
+   as `screen:`; for the rest fetch the node names via `get_metadata` and put the INFERRED
+   labels in the summary table for the user to confirm — never guess silently. **If the
+   metadata shows several full-frame screens in one unlabeled paste** (multiple ~375pt-wide
+   frames), they are almost certainly a FLOW, not one screen + components — say so and ask
+   the user to describe the flow (style A) instead of forcing the first-link rule. Wait.
+2. Ask **"next screen, or done?"** — on "next", loop back to 1 for the next screen. The paste
+   order IS the generation order. **"done" with ZERO screens collected** → confirm intent;
+   if the user really has none, drop the design lane for this run (treat it as backend-only,
+   including its manual-navigation reminder) and record no `design` block.
+3. On "done": show the screen summary table (name, node-id, components, states) with the
+   service-card defaults row — user can say "edit #N" / "edit card".
+
+**Service card — NO questionnaire (the cost/serviceTypes/userTypes/fees/processingTime/
+Home-shortcut interrogation is retired — NEVER ask it).** Apply defaults and show them
+as ONE row in the summary table for correction in the same reply — never as questions:
+`cost: free · fees: 0 · serviceTypes: inferred from the feature name/story/file context
+(fallback tax) · userTypes: all · processingTimeMinutes: 5 · homeShortcut: no ·
+requiresAuth: no`. In backend/full modes `requiresAuth` still comes from the Step 2 login
+question (SKILL.md); in design-only it stays `no` unless the flow/story mentions login (then
+ask, and collect the token in the NEXT message — runtime only, never in any file). The user
+edits the row with e.g. "edit card: paid, fees 50". Record the final values (edited or
+defaulted) in `design.serviceCard`; the report lists them so they can be changed later.
+**Design-append / persisted `serviceCard` exists** → reuse disk values silently, show nothing.
+
+Extract fileKey + node IDs from the pasted URLs and record screens, transitions, and
+serviceCard in the spec's `design` block ([SPEC_FORMAT.md](SPEC_FORMAT.md)) — **node IDs
+only, never full URLs**.
+
+**Design-only persistence: immediately after collection** (before any screen is built),
+write the design record so a crash mid-lane loses nothing — all screens
+`status: "pending"`, updated per screen as the lane progresses (§6): **no
+`feature-spec.json` exists** → hand-write one containing ONLY
+`{ "feature", "skillVersion", "design" }` (`skillVersion` = the `SKILL_VERSION` constant in
+`<skill>/scripts/generate.js`); **a spec file already exists** (backend previously
+generated) → MERGE the `design` block into it, never replace the file. Either way the
+record is a resume artifact, NOT a generate.js input. (Full mode needs none of this here —
+its spec lives in the scratch dir until `audit.js --persist-spec`.)
+
+**Design-only: compaction pause after collection.** Once the summary table is confirmed
+AND the design record is persisted, run SKILL.md's compaction checkpoint 1 (ask the user
+to `/compact` / `/summarize` / host equivalent) BEFORE fetching any Figma design context.
+(Full mode takes this pause after the Step 3 tables instead — don't pause twice.)
+
+Everything after collection — reading the frames, building the screens, wiring the
+transitions, verification, navigation registration — follows the sections below.
 
 ## 0. Ground rules (apply to every screen)
 
@@ -198,56 +275,69 @@ and deviations (nearest-token substitutions, states inferred from the story, ico
 and anything that needs their eyes. Wait for their go-ahead, then continue to the next screen
 in order.
 
+**Compaction pause (SKILL.md "Context-compaction checkpoints", checkpoint 2):** end the
+checkpoint message with it — once the user confirms the screen, ask them to run the host's
+compaction command (`/compact` in Claude Code / Codex CLI, `/summarize` in Cursor,
+`/compress` in Gemini CLI) and say "continue" before you fetch the next screen's Figma
+context. Update the persisted design record's screen `status` BEFORE the pause so the
+progress survives the summary.
+
 ## 5. Navigation registration (once per feature, before first verification)
 
 The design lane REGISTERS the feature (decision: auto-register; backend-only mode never does
-this). For id `my-flow`, page key `myFlow`:
+this) — and registration is SCRIPTED. Run from the target repo root (the spec must carry the
+`design` block, i.e. Screen collection ran):
 
-1. `src/core/navigation/routes/RouteContract.ts` — 3 edits: `myFlow` in the `serviceFlow`
-   type block; its `toHref: () => '/service-flow/my-flow'`; the `'serviceFlow.myFlow'` entry
-   in the flat `routeDefinitions` map.
-2. `src/core/navigation/routes/Routes.ts` — `Routes.serviceFlow.myFlow()` builder.
-3. `app/service-flow/my-flow.tsx` — dedicated Expo Router file rendering the feature screen
-   (dedicated-file pattern, like integrated-tariff). Use an `as Href` cast until the next
-   `expo start` regenerates typed routes.
-4. `src/presentation/service-flow/screens/pages/index.ts` —
-   `registerServiceFlowPage(['myFlow', 'my-flow'], { component, serviceId, titleKey,
-   descriptionKey })`.
-5. `src/presentation/services/models/servicesData.ts` — the SERVICES_DATA entry from the
-   spec's `design.serviceCard` (Step 2c defaults unless the user edited them:
-   `screen: Routes.serviceFlow.myFlow()`, cost, serviceTypes, userTypes, fees,
-   processingTimeMinutes, `requiresAuth`, `addedAt: Date.UTC(...)` today). This alone puts
-   the card on the Services tab + details screen.
-6. `src/core/localization/translations/{en,ar}.json` — `services.<featureCamel>.title/
-   description` for the card; `serviceFlow.pages.<featureCamel>.*` if the generic host is
-   ever used. Feature-namespace strings live in the feature's own translations barrel, merged
-   via merger.ts — register-di.js wires that in backend/full modes; **in design-only mode add
-   the merger.ts import + `featureTranslations` entry BY HAND** (register-di never runs).
-7. `src/core/deepLinking/DeepLinkingService.ts` — add both aliases to
-   `dedicatedServiceFlowRoutes`.
-8. Home shortcut — ONLY if the user explicitly asked for one: hand-edit the Home components
-   (`src/presentation/home/…`); Home cards are hardcoded and nothing there is automatic.
-9. Feature slice: `presentation/routes.ts` exporting `<FEATURE>_SERVICE_ID` /
-   `<FEATURE>_PAGE_KEY` + a typed route builder; export the screen + routes from the feature
-   `index.ts` barrel.
+```
+node <skill>/scripts/register-navigation.js <spec> --repo <repo-root>
+```
 
-All these files go into the manifest's `patched` list (append them by hand to
-`.claude-skill-manifest.json`) so rollback covers them. **Design-only mode has no manifest**
-(generate.js never ran) — create one at the repo root as
-`{"feature": "<Feature>", "mode": "design", "created": [], "patched": []}` and record the
-lane's files there, so aborting still has a rollback map.
+One idempotent run (first run plants permanent `// <design-lane:...>` anchors — same
+one-time, owner-approved policy as register-di.js) does all of this for id `my-flow`,
+page key `myFlow` (both derived from the feature name):
+
+1. `RouteContract.ts` — the 3 edits (serviceFlow type entry, `toHref`, flat
+   `routeDefinitions` entry).
+2. `Routes.ts` — the `Routes.serviceFlow.myFlow()` builder.
+3. `app/service-flow/my-flow.tsx` — dedicated Expo Router file rendering the feature's flow
+   host (the generate.js starter screen, imported by full path; **design-only with no
+   starter yet**: a placeholder host is created and flagged in `needsClaude` — replace it
+   with the real §2 build).
+4. Page registry — `registerServiceFlowPage(['myFlow', 'my-flow'], …)`.
+5. `SERVICES_DATA` — the entry from `design.serviceCard` (`addedAt: Date.UTC(today)`,
+   `requiresAuth` line only when true). This alone puts the card on the Services tab.
+6. `en.json` + `ar.json` — `services.<featureCamel>.title/description` inserted as
+   TODO(claude) placeholders.
+7. `DeepLinkingService.ts` — both `dedicatedServiceFlowRoutes` aliases.
+8. Feature slice `presentation/routes.ts` — `<FEATURE>_SERVICE_ID` / `<FEATURE>_PAGE_KEY` +
+   typed route builder.
+9. Manifest — created/patched files merged into `.claude-skill-manifest.json` (created with
+   `mode: "design"` when generate.js never ran), so rollback covers everything.
+
+**Still by hand — the script's `needsClaude`/`needsManual` lists say which apply:**
+- The translation placeholder values (Arabic from Figma/story, English drafted; flag for
+  Corporate Communication).
+- Optional `SERVICES_DATA` `tags` (categoryTags) when the design shows a category tag.
+- **Design-only mode**: the merger.ts featureTranslations import + entry (register-di.js
+  never ran).
+- Home shortcut — ONLY if the user explicitly asked for one: hand-edit the Home components
+  (`src/presentation/home/…`); Home cards are hardcoded and nothing there is automatic.
+- Any `needsManual` line (anchor target not found, unknown serviceCard key) = do that exact
+  edit yourself.
+- New route paths are not in the typed-routes union until the next `expo start` regenerates
+  it — if tsc complains, add an `as Href` cast temporarily and note it in the report.
 
 ## 6. Design append (add/rework one screen later)
 
 Load the persisted spec's `design` block first — full-mode features persist it via
 `audit.js --persist-spec`; design-only features persist a hand-written
-`feature-spec.json` (`{feature, skillVersion, design}` only, per SKILL.md Step 1b) right
-after screen collection. After each design run, update the block's screen `status` values
-and the persisted file so the record stays current. **Collection for design-append = Step 2c
-item 1 ONLY (one screen unit) plus a one-row summary** — reuse the persisted `serviceCard`
+`feature-spec.json` (`{feature, skillVersion, design}` only, per the Screen collection
+section's persistence rule) right after screen collection. After each design run, update the block's screen `status` values
+and the persisted file so the record stays current. **Collection for design-append = Screen
+collection style B item 1 ONLY (one screen unit) plus a one-row summary** — reuse the persisted `serviceCard`
 silently and skip the §1 mock question whenever the wiring decision already exists in the
-persisted spec. Collect the one screen unit (SKILL.md Step
-2c, single iteration), then integrate: new state/handlers into the existing controller at the
+persisted spec. Collect the one screen unit (Screen collection
+above, single iteration), then integrate: new state/handlers into the existing controller at the
 `// <design-lane:*>` anchors (hand-edit if the feature predates them), new keys appended to
 the existing translations (never remove keys), new components in their own folders. Existing
 screens must not change behavior — verify the new screen AND smoke-check one existing screen.
@@ -259,7 +349,8 @@ feature's own conventions.
 - Every collected screen built, verified (AR light + dark, EN mirror), and checkpointed.
 - `npx tsc --noEmit` clean vs baseline; feature jest suites (controller + component tests)
   green; audit re-run passes (backend/full modes — in design-only mode audit never runs:
-  the tsc diff + jest suites stand in for it).
+  the tsc diff + jest suites stand in for it). Design-only: this gate passing is SKILL.md
+  compaction checkpoint 3 — pause for `/compact`/`/summarize` before the final report.
 - Working files cleaned up LAST: delete `.claude-skill-tsc-baseline.json` and
   `.claude-skill-manifest.json` from the repo root only now — the design lane needed both
   (AUDIT.md's cleanup is deferred to here in full/design modes).

@@ -14,7 +14,7 @@ function registeredFixture(spec = baseSpec()) {
 test('first run plants every anchor and wires tokens/registry/container/i18n', () => {
     const { repo, register, report } = registeredFixture();
     assert.equal(register.status, 0);
-    assert.ok(report.planted.length >= 7, `expected ≥7 anchors planted, got ${report.planted.length}`);
+    assert.ok(report.planted >= 7, `expected ≥7 anchors planted, got ${report.planted}`);
 
     const tokens = read(repo, 'src/core/di/tokens.ts');
     assert.match(tokens, /\/\/ <create-feature:token-imports>/);
@@ -88,9 +88,9 @@ test('second run is fully idempotent: no duplicate lines, everything reported as
     const snapshot = ['src/core/di/tokens.ts', 'src/core/di/container.ts', 'src/core/localization/merger.ts', 'src/data/services/keys.ts', '.env.development']
         .map((file) => read(repo, file));
     const rerun = JSON.parse(runScript('register-di.js', [specPath, '--repo', repo]).stdout);
-    assert.equal(rerun.inserted.length, 0);
-    assert.equal(rerun.planted.length, 0);
-    assert.ok(rerun.skippedExisting.length > 0);
+    assert.equal(rerun.inserted, 0);
+    assert.equal(rerun.planted, 0);
+    assert.ok(rerun.skippedExisting > 0);
     const after = ['src/core/di/tokens.ts', 'src/core/di/container.ts', 'src/core/localization/merger.ts', 'src/data/services/keys.ts', '.env.development']
         .map((file) => read(repo, file));
     assert.deepEqual(after, snapshot);

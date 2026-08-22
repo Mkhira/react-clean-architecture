@@ -1,5 +1,101 @@
 # Changelog
 
+## 1.11.0 — repo-convention layout: data/services interface, domain/repositories, use-cases
+
+Aligned the generated structure with the zatcaReact repo's dominant convention (surfaced by
+PR #305 review; integrated-tariff documents the rule):
+
+- `domain/IServices/I<F>Service.ts` → **`data/services/I<F>Service.ts`** — the service
+  contract is a data-layer port (only the repository implementation consumes it); the
+  domain's only port stays the repository interface. Signatures still speak domain
+  entities, never DTOs.
+- `domain/IRepositories/` → **`domain/repositories/`**.
+- `domain/usecases/` → **`domain/use-cases/`**.
+
+All templates, register-di.js imports, audit anchor checks, the example output tree, and
+tests updated. **migrate-feature.js now relocates old-layout features first** (moves the
+three dirs content-preserved, rewrites old import paths in preserved hand-written files —
+use cases, tests — then regenerates machine-owned files); dry run reports the planned
+relocation without touching disk. New lifecycle test covers the relocation end-to-end.
+Suite 146/146. SKILL_VERSION → 1.11.0.
+
+Migrating an existing feature (e.g. the ApplicationStatus PR):
+`node <skill>/scripts/migrate-feature.js <Feature> --repo <root>` (dry run) then `--apply`,
+finish with audit.js.
+
+## 1.10.0 — scripted navigation registration (register-navigation.js)
+
+DESIGN.md §5's nine registration steps are now one deterministic script:
+`node <skill>/scripts/register-navigation.js <spec> --repo <root>` (spec must carry the
+`design` block). In one idempotent run it patches RouteContract.ts (type + toHref + flat
+map), Routes.ts, the page registry, SERVICES_DATA (from `design.serviceCard`, `addedAt`
+today, `requiresAuth` only when true), DeepLinkingService aliases, and en/ar.json
+placeholder keys (TODO(claude), minimal-diff JSON edit); creates the
+`app/service-flow/<id>.tsx` route file and the feature's `presentation/routes.ts` (never
+overwrites); and merges created/patched into the manifest (creating a `mode: "design"`
+manifest when generate.js never ran). Design-only with no starter screen gets a placeholder
+flow host flagged in `needsClaude`. First run plants permanent `// <design-lane:...>`
+anchors (same one-time policy as register-di.js); compact JSON stdout with
+needsClaude/needsManual verbatim. Still by hand: translation values, optional card tags,
+design-only merger.ts wiring, Home shortcuts.
+
+Verified against copies of the real zatcaReact navigation files (correct 2-space/4-space
+indents, minimal JSON diffs, idempotent rerun) + 10 new fixture tests (suite 145/145).
+Saves ~7 read+edit round trips (~8–12k tokens) per design run and de-risks the most
+error-prone manual step. SKILL_VERSION → 1.10.0.
+
+## 1.9.1 — mandatory context-compaction checkpoints
+
+Long runs must no longer drown in stale intake/Figma/fix-cycle context. New SKILL.md
+section "Context-compaction checkpoints": the agent pauses and asks the USER to run the
+host's compaction command — Claude Code → `/compact`, Cursor → `/summarize`, Codex CLI →
+`/compact`, Gemini CLI → `/compress`, other hosts → their equivalent (no command → skip,
+never block). Three mandatory checkpoints:
+
+1. After the final intake confirmation, before any implementation (backend/full: after the
+   Step 3 tables; design-only: after the Step 2c summary table + persisted design record).
+2. After every per-screen checkpoint (DESIGN.md §4) — folded into the go-ahead message;
+   the design record's screen `status` is updated BEFORE the pause.
+3. After the test/audit phase passes (backend/full: audit PASS; design-only: the §7
+   tsc + jest gate), before the design lane / final report.
+
+Rule: everything needed to resume must be on disk before the pause (spec path named in the
+pause message, design record, manifest, todo state); post-compaction work re-reads files,
+never chat history. Checklist items 3/8/8b carry inline markers. SKILL_VERSION → 1.9.1.
+
+## 1.9.0 — token-optimization pass: leaner router docs + compact script output
+
+Applied the applicable parts of the 2026-08-22 token-optimization review. Explicitly NOT
+applied (user re-confirmed): grouped intake (one-question-per-message stays), grep-only
+COMPONENTS.md/TOKEN_MAP.md loading (full reads stay — decision 22), shorter cache question,
+fewer confirmation tables, compressed final report, splitting DESIGN.md. No safeguard,
+question, or rule was removed — content only moved to where it's loaded on demand.
+
+- **SKILL.md 419 → 336 lines**: append mode → new `APPEND.md` (loaded only when Step 1 finds
+  an existing feature); remove/rename/migrate → new `LIFECYCLE.md`; Step 2c screen
+  collection → DESIGN.md's new "Screen collection" section (backend-only runs no longer
+  carry it; full/design runs load DESIGN.md at collection time, which they need anyway).
+  Step 2c/lifecycle/append stubs with hard non-negotiables remain in SKILL.md as routers.
+- **History out of the operational docs**: date-stamped user decisions and live-finding
+  anecdotes moved to `docs/decisions.md` (never loaded during runs); the rules they produced
+  stay in place, undated.
+- **Compact machine-readable stdout** (full detail always on disk, failures always verbatim):
+  `generate.js` prints `{status, created/skipped/patched counts, needsClaude, needsManual,
+  manifest path}` instead of the whole manifest (which is still written to
+  `.claude-skill-manifest.json`); `register-di.js` prints counts + full `needsManual`;
+  `audit.js` collapses passing checks to one `PASS: a, b, c` line — WARN/FAIL rows,
+  reminders, and the RESULT line are unchanged.
+- Tests updated to read the on-disk manifest / new summary shapes; suite green (135/135).
+- **Round 2** (same review, second pass): the progress checklist is tracked in the agent's
+  todo tool instead of being re-printed in chat every update (every step still runs);
+  audit.js prints the standing reminders only on PASS runs (failing fix-cycles show only the
+  actionable FAIL/WARN rows); the design-only persistence rules moved from SKILL.md Step 1b
+  into DESIGN.md's Screen collection section (backend-only runs never needed them).
+- Measured on the OrderTracking fixture (2 endpoints): generate+register+audit stdout
+  8,323B → 1,777B (−79%, ≈1.6k tokens per pass; audit savings repeat per fix-cycle).
+  Docs loaded per run: backend-only −~7.6KB (~1.9k tokens), backend append −~5.2KB,
+  full/design −~2.5KB (content mostly relocated, history stripped).
+
 ## 1.8.0 — strict clean-architecture boundaries + error taxonomy
 
 Closing the two valid P0s (and one P1) from the external architecture review

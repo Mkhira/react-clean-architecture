@@ -14,8 +14,8 @@ Paste a curl. The skill interviews you (one question per message), writes a smal
 
 ```
 src/features/<Feature>/
-├── data/          dtos · endpoints · mappers · service · repository
-├── domain/        entities · errors · IRepositories · IServices · use cases
+├── data/          dtos · endpoints · mappers · service (+ its interface) · repository
+├── domain/        entities · errors · repositories (interfaces) · use-cases
 ├── presentation/  screens + controllers · styles · queries · translations (en/ar)
 ├── test/          mapper + use-case Jest suites (+ render tests in the design lane)
 └── feature-spec.json   (sanitized, persisted — powers append/remove/rename/migrate)
@@ -185,15 +185,16 @@ The agent walks the checklist in [SKILL.md](skills/react-clean-architecture/SKIL
 
 | Doc | Contents |
 |---|---|
-| [SKILL.md](skills/react-clean-architecture/SKILL.md) | the agent's entry point — full workflow, progress checklist, intake protocol, append mode |
-| [DESIGN.md](skills/react-clean-architecture/DESIGN.md) | design lane: Figma → screens → simulator verification loop, RTL ground rules, navigation registration |
+| [SKILL.md](skills/react-clean-architecture/SKILL.md) | the agent's entry point — workflow router, progress checklist, intake protocol |
+| [DESIGN.md](skills/react-clean-architecture/DESIGN.md) | design lane: screen collection, Figma → screens → simulator verification loop, RTL ground rules, navigation registration |
+| [APPEND.md](skills/react-clean-architecture/APPEND.md) | endpoint-append lane: persisted-spec reuse, behavior table, append user-story rule |
+| [LIFECYCLE.md](skills/react-clean-architecture/LIFECYCLE.md) | remove / rename / migrate a skill-generated feature |
 | [SPEC_FORMAT.md](skills/react-clean-architecture/SPEC_FORMAT.md) | `feature-spec.json` schema + collision rules |
 | [AUDIT.md](skills/react-clean-architecture/AUDIT.md) | every audit check and how to fix each failure |
 | [TOKEN_MAP.md](skills/react-clean-architecture/TOKEN_MAP.md) | Figma px/hex/variable → theme-token mapping used by the design lane |
 | [COMPONENTS.md](skills/react-clean-architecture/COMPONENTS.md) | shared-components dictionary (props, variants, gotchas) used by the reuse gate — kept honest by the `components-md` drift check in the audit |
+| [docs/decisions.md](skills/react-clean-architecture/docs/decisions.md) | decision & live-finding history (not loaded during runs) |
 | [CHANGELOG.md](CHANGELOG.md) | what changed in each version, with the live-run findings that drove it |
-| [TOKEN_MAP.md](skills/react-clean-architecture/TOKEN_MAP.md) | Figma px/hex/variables → theme token mapping |
-| [CHANGELOG.md](CHANGELOG.md) | version history |
 | [examples/](skills/react-clean-architecture/examples/) | filled spec + full expected output tree |
 | [evals/](skills/react-clean-architecture/evals/) | end-to-end eval scenarios against a real repo copy |
 
@@ -205,6 +206,7 @@ The agent walks the checklist in [SKILL.md](skills/react-clean-architecture/SKIL
 | `scripts/json-to-dto.js` | sample JSON → TypeScript DTO declarations |
 | `scripts/generate.js` | spec → every feature file (validates spec; never overwrites; append via anchors) |
 | `scripts/register-di.js` | DI + i18n + config + 6 env files, idempotent |
+| `scripts/register-navigation.js` | design lane's navigation registration (routes, page registry, SERVICES_DATA, deep links, translations placeholders), idempotent |
 | `scripts/audit.js` | tsc-baseline diff · jest · arch-boundaries · structure/DI/env/secret checks (`--baseline`, `--persist-spec`) |
 | `scripts/rollback.js` | manifest-scoped undo — dry-run plan, `--apply` to execute |
 | `scripts/setup-test-infra.js` | auto-installs `@testing-library/react-native`, creates/wires `jest.setup.js` (`--check` for report-only) |

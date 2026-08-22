@@ -74,8 +74,8 @@ function checkAnchors(repo, f) {
         [path.join(base, 'data', 'endpoints', 'endpoints.ts'), '// <create-feature:endpoints>'],
         [path.join(base, 'data', 'services', `${f.serviceClass}.ts`), '// <create-feature:methods>'],
         [path.join(base, 'data', 'repositories', `${f.repositoryClass}.ts`), '// <create-feature:methods>'],
-        [path.join(base, 'domain', 'IServices', `${f.serviceInterface}.ts`), '// <create-feature:signatures>'],
-        [path.join(base, 'domain', 'IRepositories', `${f.repositoryInterface}.ts`), '// <create-feature:signatures>'],
+        [path.join(base, 'data', 'services', `${f.serviceInterface}.ts`), '// <create-feature:signatures>'],
+        [path.join(base, 'domain', 'repositories', `${f.repositoryInterface}.ts`), '// <create-feature:signatures>'],
     ];
     const missing = anchored
         .filter(([file, anchor]) => fs.existsSync(file) && !fs.readFileSync(file, 'utf8').includes(anchor))
@@ -339,7 +339,7 @@ function tsFilesUnder(dir) {
  *   - domain/ may import ONLY within domain/ plus @domain/* and @shared/* —
  *     never data/ (DTOs!), @core, react, expo, axios, react-query, navigation;
  *   - data/ may never import from presentation/.
- * This is what keeps transport DTOs out of domain/IServices permanently.
+ * This is what keeps transport DTOs (and every data-layer type) out of domain/ permanently.
  */
 function archBoundaryProblems(repo, feature) {
     const base = path.join(repo, 'src', 'features', feature);
@@ -527,9 +527,14 @@ function main() {
     if (!argv.includes('--skip-jest')) checkJest(repo, f);
 
     const failed = rows.filter((row) => row.status === 'FAIL');
-    const width = Math.max(...rows.map((row) => row.check.length));
+    // passing checks collapse to one line (their names are the whole story);
+    // WARN/FAIL rows keep the full detail — those are the actionable ones.
+    const passed = rows.filter((row) => row.status === 'PASS');
+    const flagged = rows.filter((row) => row.status !== 'PASS');
     console.log(`\nAUDIT — ${f.feature} (${spec.mode})`);
-    for (const row of rows) {
+    if (passed.length) console.log(`  PASS: ${passed.map((row) => row.check).join(', ')}`);
+    const width = flagged.length ? Math.max(...flagged.map((row) => row.check.length)) : 0;
+    for (const row of flagged) {
         console.log(`  ${row.status.padEnd(4)} ${row.check.padEnd(width)}  ${row.detail}`);
     }
 
@@ -555,8 +560,12 @@ function main() {
         // unreadable package.json — jest/tsc checks will have complained already
     }
     reminders.push(`Navigation (backend-only runs): expose the screen with a route file under app/ (expo-router) rendering ${f.feature}Screen from presentation/screens/. Full/design-mode runs: the design lane registers navigation instead — see DESIGN.md §5.`);
-    console.log('\nReminders:');
-    for (const reminder of reminders) console.log(`  - ${reminder}`);
+    // reminders are end-of-run information — during failing fix-cycles only the
+    // FAIL rows are actionable, so the standing reminders print on PASS runs only
+    if (!failed.length) {
+        console.log('\nReminders:');
+        for (const reminder of reminders) console.log(`  - ${reminder}`);
+    }
 
     if (!failed.length && argv.includes('--persist-spec')) {
         const where = persistSpec(repo, spec, f);

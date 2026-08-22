@@ -181,8 +181,8 @@ function updateTokens(repo, f) {
     }
 
     const imports = [
-        `import type { ${f.serviceInterface} } from '@features/${f.feature}/domain/IServices/${f.serviceInterface}';`,
-        `import type { ${f.repositoryInterface} } from '@features/${f.feature}/domain/IRepositories/${f.repositoryInterface}';`,
+        `import type { ${f.serviceInterface} } from '@features/${f.feature}/data/services/${f.serviceInterface}';`,
+        `import type { ${f.repositoryInterface} } from '@features/${f.feature}/domain/repositories/${f.repositoryInterface}';`,
         `import type { ${f.errorType} } from '@features/${f.feature}/domain/errors/${f.errorType}';`,
     ];
     for (const e of f.endpoints) {
@@ -286,7 +286,7 @@ function updateContainer(repo, f) {
             ? `import { ${f.mockServiceClass} } from '@features/${f.feature}/data/services/${f.mockServiceClass}';`
             : `import { ${f.serviceClass} } from '@features/${f.feature}/data/services/${f.serviceClass}';`,
         `import { ${f.repositoryClass} } from '@features/${f.feature}/data/repositories/${f.repositoryClass}';`,
-        ...f.endpoints.map((e) => `import { ${e.useCase} } from '@features/${f.feature}/domain/usecases/${e.useCase}';`),
+        ...f.endpoints.map((e) => `import { ${e.useCase} } from '@features/${f.feature}/domain/use-cases/${e.useCase}';`),
     ];
     content = insertLines(content, '// <create-feature:imports>', imports, label);
 
@@ -556,7 +556,18 @@ function main() {
         }
     }
 
-    console.log(JSON.stringify(report, null, 2));
+    // compact machine-readable stdout: counts for the mechanical lists (audit.js
+    // verifies the wiring authoritatively; `patched` is merged into the manifest
+    // on disk), full text only for the actionable needsManual entries.
+    console.log(JSON.stringify({
+        status: report.needsManual.length ? 'NEEDS_MANUAL' : 'REGISTERED',
+        planted: report.planted.length,
+        inserted: report.inserted.length,
+        skippedExisting: report.skippedExisting.length,
+        envAppended: report.envAppended.length,
+        patched: report.patched.length,
+        needsManual: report.needsManual,
+    }, null, 2));
     return report.needsManual.length ? 2 : 0;
 }
 

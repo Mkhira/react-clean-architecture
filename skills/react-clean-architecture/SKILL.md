@@ -31,7 +31,11 @@ hand-built by Claude following [DESIGN.md](DESIGN.md).
 In terminal Claude Code there is no clickable-question UI — fall back to plain-text numbered
 questions for every choice point below.
 
-## Progress checklist (copy this and keep it updated)
+## Progress checklist (track it in your todo tool — don't re-print it)
+
+Load these steps into your task/todo tracker (one item per step, statuses updated there).
+Do NOT paste the whole checklist into chat messages on every update — name only the step
+you're on. Every step still runs; only the narration is trimmed.
 
 ```
 - [ ] 0. Baseline: node <skill>/scripts/audit.js --baseline
@@ -49,14 +53,18 @@ questions for every choice point below.
         confirm); bare-links fallback loops "next screen, or done?" (see DESIGN.md).
         NEVER ask the service-card questionnaire
 - [ ] 3. (backend, full) Confirmation tables: headers / request-field provenance / status enum
+        → COMPACTION PAUSE (see "Context-compaction checkpoints")
 - [ ] 4. (backend, full) Write feature-spec.json (scratch dir, NOT the repo)
 - [ ] 5. (backend, full) node <skill>/scripts/generate.js <spec>
 - [ ] 6. (backend, full) Hand-write use-case execute() rules (+ mapper status derivation if statusEnum)
 - [ ] 7. (backend, full) node <skill>/scripts/register-di.js <spec>
-- [ ] 8. (backend, full) node <skill>/scripts/audit.js <spec> --persist-spec   (fix → max 3 cycles)
+- [ ] 8. (backend, full) node <skill>/scripts/audit.js <spec> --persist-spec   (fix → max 3
+        cycles) → on PASS: COMPACTION PAUSE
 - [ ] 8b. (full, design) Design lane per DESIGN.md: persist the design record → REGISTER
-        NAVIGATION FIRST (DESIGN.md §5 — verification needs the screen tappable) → build
+        NAVIGATION FIRST (scripted: node <skill>/scripts/register-navigation.js <spec> —
+        DESIGN.md §5; verification needs the screen tappable) → build
         each screen → verify on the iOS simulator (AR + dark) → checkpoint with the user
+        (every screen checkpoint ends with a COMPACTION PAUSE)
 - [ ] 9. Final report to the user (Step 6 section; full/design: include the design-lane
         bullets)
 ```
@@ -65,17 +73,49 @@ Checklist items 3–8 expand under "Step 3" / "Step 5 — Generate, fill, regist
 below (Step 5's sub-items 1–5 are checklist items 4–8); the REUSE-FIRST rule (Step 4
 section) applies throughout Step 5–8b hand-writing.
 
+## Context-compaction checkpoints (mandatory pauses)
+
+Skill runs are long; intake + Figma context + fix-cycles will otherwise crowd out the
+implementation work. You cannot compact the conversation yourself — the USER runs the host
+command — so at each checkpoint below, PAUSE and ask them to compact, then continue when
+they say so:
+
+> "Good moment to free up context — please run **`<command>`**, then say **continue**.
+> All state is saved on disk (spec: `<path>`); nothing will be lost."
+
+Host → command: **Claude Code** → `/compact` · **Cursor** → `/summarize` · **Codex CLI** →
+`/compact` · **Gemini CLI** → `/compress` · any other agent → that host's own
+context-summarize/compaction command. Detect the host from your own environment (you know
+which harness you are running in); if the host has no such command, skip the pause and
+continue — never block on it.
+
+The checkpoints (all mandatory, none skippable when the host supports compaction):
+
+1. **After the final intake confirmation, BEFORE any implementation starts** — backend/full:
+   right after the Step 3 confirmation tables are confirmed; design-only: right after the
+   Step 2c summary table is confirmed AND the design record is persisted.
+2. **After EVERY screen checkpoint** (DESIGN.md §4) — fold it into the same message: once
+   the user confirms the screen, ask for the compaction before starting the next screen.
+3. **After the test/audit phase passes** — backend/full: when Step 5's audit finally PASSes
+   (before the design lane in full mode, before the final report in backend-only);
+   design-only: when the §7 tsc + jest gate passes, before the final report.
+
+Before every pause, make sure everything needed to resume is ON DISK — the spec file
+(name its exact path in the pause message so it survives the summary), the persisted
+design record, `.claude-skill-manifest.json`, and your todo-tool checklist state. After
+the user returns, re-read those files as needed; never rely on pre-compaction chat detail.
+
 ## Step 1 — Feature name
 
 1. Normalize to PascalCase (strip symbols/spaces); reject empty. Flat PascalCase under
    `src/features/` is the standard (existing kebab-case/nested features are legacy).
 2. Existence check is **case-insensitive** (macOS FS) and must also scan ONE level of nested
    category dirs (e.g. `verificationFeatures/TaxStampValidation`).
-   - Exists → **append mode** (see below). New → full scaffold.
+   - Exists → **append mode** (read [APPEND.md](APPEND.md) now). New → full scaffold.
 3. `git status --porcelain`: dirty tree → warn that manifest-based rollback is only reliable on
    a clean tree, offer "continue anyway". Not a hard refusal.
 4. Run the tsc baseline NOW (before any generation): `node <skill>/scripts/audit.js --baseline`.
-5. Ensure render-test infra (AUTOMATIC — user decision 2026-08-19, no asking):
+5. Ensure render-test infra (AUTOMATIC — never ask):
    `node <skill>/scripts/setup-test-infra.js` — installs `@testing-library/react-native` as a
    devDependency with the repo's own package manager, creates `jest.setup.js`
    (native-module mocks) only if absent, and wires `setupFilesAfterEnv` when jest config
@@ -102,16 +142,11 @@ Ask ONLY (one question, wait for the answer):
   for. No login/token question in this mode; `requiresAuth` defaults to no — ask only when
   the flow description or story mentions login (then the token question follows, next
   message, runtime-only as in Step 2).
-  Persistence: **immediately after Step 2c** (before any screen is built), write the design
-  record so a crash mid-lane loses nothing — all screens `status: "pending"`, updated per
-  screen as the lane progresses (DESIGN.md §6): **no `feature-spec.json` exists** →
-  hand-write one containing ONLY `{ "feature", "skillVersion", "design" }` (`skillVersion`
-  = the `SKILL_VERSION` constant in `<skill>/scripts/generate.js`); **a spec file already
-  exists** (backend previously generated) → MERGE the `design` block into it, never replace
-  the file. Either way the record is a resume artifact, NOT a generate.js input.
+  Persistence: **immediately after Step 2c** write the design record — exact rules in
+  DESIGN.md's Screen collection section ("Design-only persistence").
 
 **Mode × Step 1 "exists":** when Step 1 found the feature already exists, the mode answer
-selects the append lane — **full/backend** → endpoint append (Append mode section; full
+selects the append lane — **full/backend** → endpoint append ([APPEND.md](APPEND.md); full
 additionally runs design work after); **design** → design append (DESIGN.md §6). To fully
 (re)design an existing feature's screens, run design-append iterated per screen. The
 service-card defaults row is shown ONLY if the persisted spec has no `serviceCard`; values
@@ -133,8 +168,7 @@ The fixed sequence:
 3. **No response-body question** — capture the response by EXECUTING the curl (see
    "Response capture" below). Not asked, just done.
 3b. GET endpoint → ask ONLY the **cache question**, with the two cache layers spelled out so
-   "no" isn't misread as "no caching at all" (live finding 2026-08-19: a user was surprised
-   react-query still answered from memory after answering "no"):
+   "no" isn't misread as "no caching at all":
    > "How should this endpoint's responses be cached? 1. **no** — no device cache; react-query
    > still keeps responses in memory for ~5 min (app-wide default) · 2. **always-fresh** —
    > refetch on every visit, even the in-memory copy is bypassed (`staleTime: 0`; pick this
@@ -239,64 +273,11 @@ then the Step 3 confirmation tables.
 
 ## Step 2c — Screen collection (full and design modes)
 
-Two intake styles — detect from the user's first design paste:
-
-**A. Flow description (PREFERRED — user decision 2026-08-17).** The user narrates the flow in
-free text, links mixed with prose, e.g.: *"this is my dashboard main screen `<link>`; the
-'متابعة للسداد' button opens `<link>`; 'ادفع الآن' opens this modal sheet `<link>`; the
-search button opens the results screen `<link>`"*. Any narration around the links
-(role words — screen/sheet/modal/results; transition verbs — opens/redirects/shows; named
-buttons) selects this style. Parse it — do NOT run the loop in B:
-
-1. Every link the narration presents as its own screen/sheet/modal is ONE screen unit. The
-   narration order is the build order; the screen described as main/default/first is the
-   flow host. Links pasted as attachments of a screen (states, dropdowns) stay components of
-   that unit, exactly as in B.
-2. Record every described transition as an edge — `{from, trigger (the button/action text),
-   to, presentation: "push" | "sheet" | "modal"}`. **Edges are built, not decoration**: the
-   design lane wires each trigger to a real handler (DESIGN.md §2).
-3. Fetch node names via `get_metadata` for every link, then show ONE summary table —
-   screens (name, node-id, role) + transitions (from → trigger → to) + the service-card
-   defaults row (below) — and ask a single confirmation: "correct, or edit #N / edit card?".
-   Never guess silently, and never split this confirmation into multiple questions.
-
-**B. Bare links, no narration (fallback loop)** — collect sequentially, ONE question per
-message:
-
-1. Ask ONLY for **screen 1**: its Figma link plus the links of its attached components in the
-   same paste, lightly labeled — `screen:` for the frame, `sheet:` / `dropdown:` / `modal:`
-   for overlay components, `state:empty` / `state:error` / … for extra state frames. One
-   screen unit = the screen + everything pasted with it. **Unlabeled links**: treat the first
-   as `screen:`; for the rest fetch the node names via `get_metadata` and put the INFERRED
-   labels in the summary table for the user to confirm — never guess silently. **If the
-   metadata shows several full-frame screens in one unlabeled paste** (multiple ~375pt-wide
-   frames), they are almost certainly a FLOW, not one screen + components — say so and ask
-   the user to describe the flow (style A) instead of forcing the first-link rule. Wait.
-2. Ask **"next screen, or done?"** — on "next", loop back to 1 for the next screen. The paste
-   order IS the generation order. **"done" with ZERO screens collected** → confirm intent;
-   if the user really has none, drop the design lane for this run (treat it as backend-only,
-   including its manual-navigation reminder) and record no `design` block.
-3. On "done": show the screen summary table (name, node-id, components, states) with the
-   service-card defaults row — user can say "edit #N" / "edit card".
-
-**Service card — NO questionnaire (user decision 2026-08-17: the cost/serviceTypes/userTypes/
-fees/processingTime/Home-shortcut interrogation is retired).** Apply defaults and show them
-as ONE row in the summary table for correction in the same reply — never as questions:
-`cost: free · fees: 0 · serviceTypes: inferred from the feature name/story/file context
-(fallback tax) · userTypes: all · processingTimeMinutes: 5 · homeShortcut: no ·
-requiresAuth: no`. In backend/full modes `requiresAuth` still comes from the Step 2 login
-question; in design-only it stays `no` unless the flow/story mentions login (then ask, and
-collect the token in the NEXT message — runtime only, never in any file). The user edits the
-row with e.g. "edit card: paid, fees 50". Record the final values (edited or defaulted) in
-`design.serviceCard`; the report lists them so they can be changed later. **Design-append /
-persisted `serviceCard` exists** → reuse disk values silently, show nothing.
-
-Extract fileKey + node IDs from the pasted URLs and record screens, transitions, and
-serviceCard in the spec's `design` block ([SPEC_FORMAT.md](SPEC_FORMAT.md)) — **node IDs
-only, never full URLs**.
-
-Everything after collection — reading the frames, building the screens, wiring the
-transitions, verification, navigation registration — follows [DESIGN.md](DESIGN.md).
+Read [DESIGN.md](DESIGN.md) NOW and run its **"Screen collection"** section (you will need
+the rest of DESIGN.md right after anyway). Non-negotiables it enforces: flow-description
+intake (style A) is PREFERRED over the bare-links loop (style B); NEVER ask the service-card
+questionnaire (defaults shown as ONE summary-table row); the spec's `design` block stores
+node IDs only, never figma.com URLs.
 
 ## Step 3 — Three confirmation tables (never guess silently)
 
@@ -309,6 +290,9 @@ transitions, verification, navigation registration — follows [DESIGN.md](DESIG
    TODO comment).
 3. **Status enum** — response has boolean/status flags? Ask "what are the possible result
    states?" → that exact union goes in the spec's `statusEnum`.
+
+Tables confirmed → **compaction pause** (checkpoint 1 in "Context-compaction checkpoints")
+before writing the spec / any implementation.
 
 ## Step 4 — REUSE-FIRST RULE (mandatory)
 
@@ -330,7 +314,9 @@ everything you hand-write. (`cleanString` stays mapper-local; that is the repo c
    statusEnum values) — on rejection, fix the spec per the stderr messages, don't work around
    the script.
 2. `node <skill>/scripts/generate.js <spec>` — creates all files (never overwrites), prints a
-   manifest; `needsManual` entries (append mode) are YOUR hand-edit list.
+   compact summary; the full file manifest is written to `.claude-skill-manifest.json` (read
+   it when you need the exact paths). `needsClaude`/`needsManual` entries in the summary are
+   YOUR hand-edit list.
 3. Hand-write ONLY: the use-case `execute()` rules from the story, the mapper's
    `TODO(claude): status derivation` block (if statusEnum), the rule tests marked
    `TODO(claude)` in `test/`, and Arabic translation values. Match the generated code
@@ -347,7 +333,9 @@ everything you hand-write. (`cleanString` stays mapper-local; that is the repo c
    they are committed to git). First run plants permanent anchors (approved one-time edit).
 5. `node <skill>/scripts/audit.js <spec> --persist-spec` — full checks + tsc baseline diff +
    the feature's jest suites. See [AUDIT.md](AUDIT.md) for every check and how to fix each.
-6. Failures → fix and re-audit, **max 3 fix-cycles**, then stop and report what still fails.
+6. Audit PASS → **compaction pause** (checkpoint 3 in "Context-compaction checkpoints")
+   before the design lane (full) / final report (backend-only).
+   Failures → fix and re-audit, **max 3 fix-cycles**, then stop and report what still fails.
    Rollback on abort: `node <skill>/scripts/rollback.js` (dry run — shows the plan), then
    `--apply` after the user confirms. It deletes the manifest's `created` files and
    `git checkout --`s the `patched` ones (generate + register-di edits both) — nothing outside
@@ -377,43 +365,12 @@ translations flagged for Corporate Communication review. And navigation:
 
 ## Feature lifecycle (remove / rename / migrate)
 
-All three need the feature's persisted `feature-spec.json`; all are dry-run by default and
-execute only with `--apply` (confirm with the user first). Pre-skill features are refused —
-those stay manual.
-
-- **Remove**: `node <skill>/scripts/remove-feature.js <Feature> [--apply]` — deletes the
-  feature dir and unwires TOKENS/TokenRegistry/container/i18n/config/env everywhere (anchors
-  stay — they are permanent). It reports `app/` route files that still import the feature —
-  delete those by hand, then run `npx tsc --noEmit`.
-- **Rename**: `node <skill>/scripts/rename-feature.js <Old> <New> [--apply]` — renames the
-  dir, files, derived identifiers, TOKENS entries, i18n namespace, config fields, env keys,
-  and the persisted spec. Only derived identifiers are replaced (a feature "Order" can't
-  corrupt "OrderTracking"); use-case/entity names are action-scoped and stay. Afterwards:
-  review `git diff`, fix `app/` routes, re-run audit.
-- **Migrate**: `node <skill>/scripts/migrate-feature.js <Feature> [--apply]` — regenerates the
-  MACHINE-OWNED files (endpoints, service, repository, interfaces, errors) with the current
-  templates; hand-added error codes are merged; use cases, mappers, tests, and presentation
-  are never touched (dtos/entities only with `--include-types`). Always finish with audit.js.
+Read [LIFECYCLE.md](LIFECYCLE.md) when the user asks to remove, rename, or migrate a
+skill-generated feature. All three scripts need the persisted `feature-spec.json`, are
+dry-run by default (`--apply` only after user confirmation), and refuse pre-skill features.
 
 ## Append mode
 
-`audit.js --persist-spec` leaves `src/features/<Feature>/feature-spec.json` — load it FIRST for
-full prior context (host types, provenance, enums) without re-asking.
-
-**User story in append mode:** check `src/features/<Feature>/userStory/` right after loading
-the spec. Story file(s) exist → at the story point of the intake sequence ask ONE question:
-"use the existing story (<file names>) for the new endpoint(s), or write a new one?" (reading
-the existing file(s) first so the reuse offer is informed). No directory → ask the usual
-write/skip question. A NEW story → its own `.md` file per the naming rule (create the
-directory if missing). Whichever story applies, the STORY IS THE CONTRACT rule holds.
-
-| Target | Behavior |
-|---|---|
-| Skill-generated feature (anchors present) | Scripts insert at anchors + add missing imports; new per-endpoint files created; never overwrites |
-| Pre-skill feature (no anchors, e.g. TaxStampValidation, account, integrated-tariff) | Scripts report NEEDS_MANUAL → YOU edit by hand, matching THAT feature's own conventions (even singular folder names) |
-| Append turns same-host feature into mixed-host | Scripts detect + report — YOU patch the service ctor, its imports, and the DI registration args |
-| New endpoint uses device provenance, repo lacks `getDeviceMetadata()` | Reported → add the private helper by hand |
-| Anchor hand-deleted / same action twice | Reported → careful manual edit / skip or suffix |
-| Translations | Append generates NO new keys (they are feature-level) — hand-add any new screen strings to the existing `en.ts`/`ar.ts`, never removing existing keys |
-| User story | Existing `userStory/*.md` → offer reuse before asking for a new one; none → ask write/skip; a new story gets its own file — existing story files are never overwritten or deleted |
-| Design append (add/rework ONE screen) | Ask which feature → load its spec's `design` block (or start one) → collect the screen unit (Step 2c, one screen) → build + verify per DESIGN.md, integrating into the EXISTING controller/translations without touching other screens. Pre-skill features (integrated-tariff, …): hand-edit matching THAT feature's conventions |
+Read [APPEND.md](APPEND.md) when Step 1 found the feature already exists (endpoint append —
+behavior table, persisted-spec reuse, append user-story rule). Design append (one screen) is
+DESIGN.md §6.

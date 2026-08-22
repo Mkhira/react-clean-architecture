@@ -9,7 +9,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { validateSpec } = require('../scripts/generate.js');
 const { normalizeTscError, freshTscErrors } = require('../scripts/audit.js');
-const { makeTmpDir, makeFixtureRepo, baseSpec, writeSpec, runScript, read, exists } = require('./helpers.js');
+const { makeTmpDir, makeFixtureRepo, baseSpec, writeSpec, runScript, read, exists, readManifest } = require('./helpers.js');
 
 /** An app-host GET endpoint (the shape the cache question applies to). */
 function getEndpoint(overrides = {}) {
@@ -39,7 +39,7 @@ function generateInto(spec) {
     const repo = makeFixtureRepo();
     const specPath = writeSpec(makeTmpDir('spec'), spec);
     const result = runScript('generate.js', [specPath, '--repo', repo]);
-    return { repo, specPath, result, manifest: JSON.parse(result.stdout || '{}') };
+    return { repo, specPath, result, manifest: exists(repo, '.claude-skill-manifest.json') ? readManifest(repo) : {} };
 }
 
 // ------------------------------------------------------------- mock lane ----
