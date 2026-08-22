@@ -1,7 +1,7 @@
 import { GetScanHistoryUseCase } from '../domain/use-cases/GetScanHistoryUseCase';
 import { createProductVerificationError } from '../domain/errors/ProductVerificationError';
 import { Result } from '@shared/types/Result';
-import type { IProductVerificationRepository } from '../domain/repositories/IProductVerificationRepository';
+import type { IProductVerificationRepository } from '../domain/IRepositories/IProductVerificationRepository';
 
 // several shared utils import the @shared/components barrel, which drags
 // native-only modules into jest — mock it so hand-written rules can reuse

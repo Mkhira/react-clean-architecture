@@ -428,8 +428,8 @@ function serviceMethodArgs(e) {
     // path params ALWAYS come through — the endpoint URL expression needs them
     // regardless of whether a body is present
     const args = e.pathParams.map((p) => `${camel(p.name)}: ${p.type || 'string'}`);
-    // domain input, NOT the transport DTO — IService lives in domain/ and must
-    // never import from data/ (the service converts via mapper.toDTO)
+    // domain input, NOT the transport DTO — the IService contract only speaks
+    // domain types (the service converts via mapper.toDTO)
     if (e.hasBody) args.push(`input: ${e.input}`);
     if (e.queryParams.length) {
         const queryFields = e.queryParams.map((p) => `${camel(p.name)}: ${p.type || 'string'}`).join('; ');
@@ -615,7 +615,7 @@ function serviceFile(f) {
     const imports = [];
     if (f.hasApp) imports.push(`import type { IHttpClient } from '@core/http/IHttpClient';`);
     if (f.hasExternal) imports.push(`import type { IConfigService } from '@core/config/IConfigService';`);
-    imports.push(`import type { ${f.serviceInterface} } from './${f.serviceInterface}';`);
+    imports.push(`import type { ${f.serviceInterface} } from '../IServices/${f.serviceInterface}';`);
     imports.push(`import { ${f.FEATURE_SNAKE}_ENDPOINTS } from '../endpoints/endpoints';`);
     if (f.hasExternal) imports.push(`import { ${f.errorFactory} } from '../../domain/errors/${f.errorType}';`);
     for (const e of f.endpoints) {
@@ -670,7 +670,7 @@ function mockServiceMethod(f, e) {
 
 function mockServiceFile(f) {
     const imports = [
-        `import type { ${f.serviceInterface} } from './${f.serviceInterface}';`,
+        `import type { ${f.serviceInterface} } from '../IServices/${f.serviceInterface}';`,
     ];
     for (const e of f.endpoints) {
         if (e.hasResponse) {
@@ -733,8 +733,8 @@ function repositoryMethod(f, e) {
 
 function repositoryFile(f) {
     const imports = [
-        `import type { ${f.repositoryInterface} } from '../../domain/repositories/${f.repositoryInterface}';`,
-        `import type { ${f.serviceInterface} } from '../services/${f.serviceInterface}';`,
+        `import type { ${f.repositoryInterface} } from '../../domain/IRepositories/${f.repositoryInterface}';`,
+        `import type { ${f.serviceInterface} } from '../IServices/${f.serviceInterface}';`,
     ];
     for (const e of f.endpoints) {
         const names = [e.hasResponse ? e.entity : null, e.inputFields.length ? e.input : null].filter(Boolean);
@@ -757,9 +757,9 @@ function serviceInterfaceFile(f) {
     const imports = [];
     const signatures = f.endpoints.map((e) => {
         const args = serviceMethodArgs(e).join(', ');
-        // signatures speak domain entities, never transport DTOs — but the file
-        // lives in data/services (repo convention: only the repository contract
-        // is a domain port; this one is a data-layer contract)
+        // signatures speak domain entities, never transport DTOs — the file
+        // lives in data/IServices (a data-layer contract: only the repository
+        // impl consumes it), but its imports point at domain only
         const names = [e.hasBody && e.inputFields.length ? e.input : null, e.hasResponse ? e.entity : null].filter(Boolean);
         if (names.length) imports.push(`import type { ${names.join(', ')} } from '../../domain/entities/${e.entity}';`);
         return `    ${e.actionCamel}(${args}): Promise<${e.returnType}>;`;
@@ -848,7 +848,7 @@ function useCaseFile(f, e) {
 
     return `import { ${interfaceName} } from '@domain/shared/IUseCase';
 import { Result } from '@shared/types/Result';
-import type { ${f.repositoryInterface} } from '../repositories/${f.repositoryInterface}';
+import type { ${f.repositoryInterface} } from '../IRepositories/${f.repositoryInterface}';
 ${entityImports.length ? `import type { ${entityImports.join(', ')} } from '../entities/${e.entity}';\n` : ''}import { ${f.errorFactory}, ${f.errorGuard}, type ${f.errorType} } from '../errors/${f.errorType}';
 
 ${storyComment}export class ${e.useCase} implements ${implementsClause} {
@@ -1260,7 +1260,7 @@ function useCaseTestFile(f, e) {
     return `import { ${e.useCase} } from '../domain/use-cases/${e.useCase}';
 import { ${f.errorFactory} } from '../domain/errors/${f.errorType}';
 import { Result } from '@shared/types/Result';
-import type { ${f.repositoryInterface} } from '../domain/repositories/${f.repositoryInterface}';
+import type { ${f.repositoryInterface} } from '../domain/IRepositories/${f.repositoryInterface}';
 
 // several shared utils import the @shared/components barrel, which drags
 // native-only modules into jest — mock it so hand-written rules can reuse
@@ -1348,8 +1348,8 @@ function buildFilePlan(spec, f, testsDir = 'test') {
         files.set(path.join(base, 'data', 'services', `${f.mockServiceClass}.ts`), mockServiceFile(f));
     }
     files.set(path.join(base, 'data', 'repositories', `${f.repositoryClass}.ts`), repositoryFile(f));
-    files.set(path.join(base, 'data', 'services', `${f.serviceInterface}.ts`), serviceInterfaceFile(f));
-    files.set(path.join(base, 'domain', 'repositories', `${f.repositoryInterface}.ts`), repositoryInterfaceFile(f));
+    files.set(path.join(base, 'data', 'IServices', `${f.serviceInterface}.ts`), serviceInterfaceFile(f));
+    files.set(path.join(base, 'domain', 'IRepositories', `${f.repositoryInterface}.ts`), repositoryInterfaceFile(f));
     files.set(path.join(base, 'domain', 'errors', `${f.errorType}.ts`), errorsFile(f));
     files.set(path.join(base, 'presentation', 'controller.ts'), controllerFile(f));
     if (f.endpoints.some((e) => e.method === 'GET')) {
@@ -1441,7 +1441,7 @@ function interfaceEndpointImports(f, e, forService) {
     if (forService) {
         // entity-only signatures — the transport DTO never appears in the service contract
         const names = [e.hasBody && e.inputFields.length ? e.input : null, e.hasResponse ? e.entity : null].filter(Boolean);
-        if (names.length) imports.push(`import type { ${names.join(', ')} } from '../entities/${e.entity}';`);
+        if (names.length) imports.push(`import type { ${names.join(', ')} } from '../../domain/entities/${e.entity}';`);
     } else {
         const names = [e.inputFields.length ? e.input : null, e.hasResponse ? e.entity : null].filter(Boolean);
         if (names.length) imports.push(`import type { ${names.join(', ')} } from '../entities/${e.entity}';`);
@@ -1508,13 +1508,13 @@ function appendFeature(repo, spec, f, manifest) {
             }]
             : []),
         {
-            file: path.join(base, 'data', 'services', `${f.serviceInterface}.ts`),
+            file: path.join(base, 'data', 'IServices', `${f.serviceInterface}.ts`),
             anchor: '// <create-feature:signatures>',
             text: (e) => `    ${e.actionCamel}(${serviceMethodArgs(e).join(', ')}): Promise<${e.returnType}>;`,
             imports: (e) => interfaceEndpointImports(f, e, true),
         },
         {
-            file: path.join(base, 'domain', 'repositories', `${f.repositoryInterface}.ts`),
+            file: path.join(base, 'domain', 'IRepositories', `${f.repositoryInterface}.ts`),
             anchor: '// <create-feature:signatures>',
             text: (e) => `    ${e.actionCamel}(${e.inputFields.length ? `input: ${e.input}` : ''}): Promise<${e.returnType}>;`,
             imports: (e) => interfaceEndpointImports(f, e, false),
@@ -1867,6 +1867,6 @@ if (require.main === module) {
     process.exit(main());
 }
 
-const SKILL_VERSION = '1.11.0';
+const SKILL_VERSION = '1.13.0';
 
 module.exports = { featureModel, buildFilePlan, testsDirName, validateSpec, pascal, camel, snakeUpper, kebab, queryKeyName, queryKeyValue, SKILL_VERSION };

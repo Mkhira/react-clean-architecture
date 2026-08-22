@@ -5,17 +5,18 @@
     "src/features/ProductVerification/data/endpoints/endpoints.ts",
     "src/features/ProductVerification/data/services/ProductVerificationService.ts",
     "src/features/ProductVerification/data/repositories/ProductVerificationRepository.ts",
-    "src/features/ProductVerification/data/services/IProductVerificationService.ts",
-    "src/features/ProductVerification/domain/repositories/IProductVerificationRepository.ts",
+    "src/features/ProductVerification/data/IServices/IProductVerificationService.ts",
+    "src/features/ProductVerification/domain/IRepositories/IProductVerificationRepository.ts",
     "src/features/ProductVerification/domain/errors/ProductVerificationError.ts",
-    "src/features/ProductVerification/presentation/productVerificationController.ts",
-    "src/features/ProductVerification/presentation/productVerificationScreen.tsx",
+    "src/features/ProductVerification/presentation/controller.ts",
+    "src/features/ProductVerification/presentation/queries.ts",
+    "src/features/ProductVerification/presentation/screens/ProductVerificationScreen.tsx",
     "src/features/ProductVerification/presentation/styles.ts",
     "src/features/ProductVerification/presentation/types.ts",
-    "src/features/ProductVerification/presentation/translations/en.json",
-    "src/features/ProductVerification/presentation/translations/ar.json",
+    "src/features/ProductVerification/presentation/translations/en.ts",
+    "src/features/ProductVerification/presentation/translations/ar.ts",
+    "src/features/ProductVerification/presentation/translations/index.ts",
     "src/features/ProductVerification/presentation/components/.gitkeep",
-    "src/features/ProductVerification/presentation/screens/.gitkeep",
     "src/features/ProductVerification/presentation/utils/.gitkeep",
     "src/features/ProductVerification/data/dtos/VerifyProductCodeDTO.ts",
     "src/features/ProductVerification/data/mappers/VerifyProductCodeMapper.ts",
@@ -35,7 +36,7 @@
   "needsClaude": [
     "src/features/ProductVerification/domain/use-cases/VerifyProductCodeUseCase.ts — fill execute() business rules + status derivation in VerifyProductCodeMapper.ts",
     "src/features/ProductVerification/domain/use-cases/GetScanHistoryUseCase.ts — fill execute() business rules",
-    "src/features/ProductVerification/presentation/translations/ar.json — replace placeholder Arabic strings (use the user story's Arabic text when present)"
+    "src/features/ProductVerification/presentation/translations/ar.ts — replace placeholder Arabic strings (use the user story's Arabic text when present)"
   ],
   "needsManual": []
 }

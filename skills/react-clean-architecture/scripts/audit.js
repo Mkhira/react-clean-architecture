@@ -74,8 +74,8 @@ function checkAnchors(repo, f) {
         [path.join(base, 'data', 'endpoints', 'endpoints.ts'), '// <create-feature:endpoints>'],
         [path.join(base, 'data', 'services', `${f.serviceClass}.ts`), '// <create-feature:methods>'],
         [path.join(base, 'data', 'repositories', `${f.repositoryClass}.ts`), '// <create-feature:methods>'],
-        [path.join(base, 'data', 'services', `${f.serviceInterface}.ts`), '// <create-feature:signatures>'],
-        [path.join(base, 'domain', 'repositories', `${f.repositoryInterface}.ts`), '// <create-feature:signatures>'],
+        [path.join(base, 'data', 'IServices', `${f.serviceInterface}.ts`), '// <create-feature:signatures>'],
+        [path.join(base, 'domain', 'IRepositories', `${f.repositoryInterface}.ts`), '// <create-feature:signatures>'],
     ];
     const missing = anchored
         .filter(([file, anchor]) => fs.existsSync(file) && !fs.readFileSync(file, 'utf8').includes(anchor))

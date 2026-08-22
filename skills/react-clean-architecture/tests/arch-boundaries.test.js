@@ -45,7 +45,7 @@ test('importSpecifiers: named, type-only, multi-line, side-effect, and export-fr
 
 test('domain importing a data DTO is flagged (the original P0 violation)', () => {
     const repo = makeFixtureRepo();
-    writeFeatureFile(repo, 'src/features/Dirty/domain/repositories/IDirtyRepository.ts',
+    writeFeatureFile(repo, 'src/features/Dirty/domain/IRepositories/IDirtyRepository.ts',
         `import type { XRequestDTO } from '../../data/dtos/XDTO';\nexport interface IDirtyService { x(p: XRequestDTO): Promise<void>; }\n`);
     const problems = archBoundaryProblems(repo, 'Dirty');
     assert.equal(problems.length, 1);
@@ -97,7 +97,7 @@ test('a generated POST feature (body + device + status) has ZERO boundary proble
     assert.equal(result.status, 0);
     assert.deepEqual(archBoundaryProblems(repo, 'OrderTracking'), []);
     // and the domain service interface takes the domain input, not the DTO
-    const iface = read(repo, 'src/features/OrderTracking/data/services/IOrderTrackingService.ts');
+    const iface = read(repo, 'src/features/OrderTracking/data/IServices/IOrderTrackingService.ts');
     assert.match(iface, /input: TrackOrderInput/);
     assert.ok(!iface.includes('RequestDTO'), 'domain interface must not mention the transport DTO');
 });

@@ -188,7 +188,7 @@ test('append mode: inserts at anchors with imports, idempotent on re-run', () =>
     assert.match(service, /import type \{ CancelOrderInput \} from '\.\.\/\.\.\/domain\/entities\/CancelOrderResult';/);
     assert.match(service, /import \{ CancelOrderMapper \} from '\.\.\/mappers\/CancelOrderMapper';/);
     assert.ok(!service.includes('CancelOrderRequestDTO'), 'RequestDTO must stay inside the mapper');
-    const iface = read(repo, 'src/features/OrderTracking/domain/repositories/IOrderTrackingRepository.ts');
+    const iface = read(repo, 'src/features/OrderTracking/domain/IRepositories/IOrderTrackingRepository.ts');
     assert.match(iface, /cancelOrder\(input: CancelOrderInput\): Promise<void>;/);
 
     // idempotent: second append changes nothing

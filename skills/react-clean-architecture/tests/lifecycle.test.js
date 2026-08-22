@@ -40,7 +40,7 @@ test('CORE: POST with path AND query params — service/repo/interface signature
     const repository = read(repo, 'src/features/OrderTracking/data/repositories/OrderTrackingRepository.ts');
     assert.match(repository, /this\.apiService\.trackOrder\(input\.orderId, input, \{ notify: input\.notify \}\)/);
 
-    const iface = read(repo, 'src/features/OrderTracking/data/services/IOrderTrackingService.ts');
+    const iface = read(repo, 'src/features/OrderTracking/data/IServices/IOrderTrackingService.ts');
     assert.match(iface, /trackOrder\(orderId: string, input: TrackOrderInput, query: \{ notify: string \}\): Promise<TrackOrderResult>;/);
     assert.ok(!iface.includes('data/dtos'), 'domain interface must not import from data/');
 });
@@ -241,12 +241,12 @@ export const isOrderTrackingError = (error: unknown): error is OrderTrackingErro
     assert.ok(read(repo, 'src/features/OrderTracking/feature-spec.json').includes(`"skillVersion": "${SKILL_VERSION}"`));
 });
 
-test('migrate: pre-1.11.0 layout is relocated (IServices/IRepositories/usecases) with imports rewritten', () => {
+test('migrate: old layouts are relocated (usecases + 1.11.x data/services interface + domain/repositories) with imports rewritten', () => {
     const { repo } = fullFixture();
     const featureDir = path.join(repo, 'src', 'features', 'OrderTracking');
 
-    // simulate an old-layout feature: move the three dirs back and restore the
-    // old import paths everywhere (interface, repository, service, use case, test)
+    // simulate a feature stuck on the old layouts: pre-1.11 `usecases` plus the
+    // short-lived 1.11.x interface locations, with matching old import paths
     const moveBack = (fromRel, toRel) => {
         fs.mkdirSync(path.join(featureDir, toRel), { recursive: true });
         for (const name of fs.readdirSync(path.join(featureDir, fromRel))) {
@@ -255,29 +255,30 @@ test('migrate: pre-1.11.0 layout is relocated (IServices/IRepositories/usecases)
         fs.rmdirSync(path.join(featureDir, fromRel));
     };
     moveBack('domain/use-cases', 'domain/usecases');
-    moveBack('domain/repositories', 'domain/IRepositories');
+    moveBack('domain/IRepositories', 'domain/repositories');
     fs.renameSync(
-        path.join(featureDir, 'data/services/IOrderTrackingService.ts'),
-        (fs.mkdirSync(path.join(featureDir, 'domain/IServices'), { recursive: true }),
-        path.join(featureDir, 'domain/IServices/IOrderTrackingService.ts'))
+        path.join(featureDir, 'data/IServices/IOrderTrackingService.ts'),
+        path.join(featureDir, 'data/services/IOrderTrackingService.ts')
     );
+    fs.rmdirSync(path.join(featureDir, 'data/IServices'));
     const oldify = (relative, edits) => {
         const file = path.join(featureDir, relative);
         let content = fs.readFileSync(file, 'utf8');
         for (const [from, to] of edits) content = content.replace(from, to);
         fs.writeFileSync(file, content);
     };
-    oldify('domain/IServices/IOrderTrackingService.ts', [["'../../domain/entities/", "'../entities/"]]);
-    oldify('data/services/OrderTrackingService.ts', [["'./IOrderTrackingService'", "'../../domain/IServices/IOrderTrackingService'"]]);
+    // (the interface's '../../domain/entities/' imports are the same at both
+    // data/services and data/IServices depth — no oldify needed there)
+    oldify('data/services/OrderTrackingService.ts', [["'../IServices/IOrderTrackingService'", "'./IOrderTrackingService'"]]);
     oldify('data/repositories/OrderTrackingRepository.ts', [
-        ["'../../domain/repositories/", "'../../domain/IRepositories/"],
-        ["'../services/IOrderTrackingService'", "'../../domain/IServices/IOrderTrackingService'"],
+        ["'../../domain/IRepositories/", "'../../domain/repositories/"],
+        ["'../IServices/IOrderTrackingService'", "'../services/IOrderTrackingService'"],
     ]);
-    oldify('domain/usecases/TrackOrderUseCase.ts', [["'../repositories/", "'../IRepositories/"]]);
+    oldify('domain/usecases/TrackOrderUseCase.ts', [["'../IRepositories/", "'../repositories/"]]);
     const testsDir = fs.readdirSync(featureDir).includes('test') ? 'test' : '__tests__';
     oldify(`${testsDir}/TrackOrderUseCase.test.ts`, [
         ["'../domain/use-cases/", "'../domain/usecases/"],
-        ["'../domain/repositories/", "'../domain/IRepositories/"],
+        ["'../domain/IRepositories/", "'../domain/repositories/"],
     ]);
     // hand-written marker that must survive the relocation
     oldify('domain/usecases/TrackOrderUseCase.ts', [['// TODO(claude): implement business rules:', '// HAND WRITTEN RULES']]);
@@ -287,23 +288,25 @@ test('migrate: pre-1.11.0 layout is relocated (IServices/IRepositories/usecases)
     assert.equal(dry.status, 0, dry.stdout + dry.stderr);
     assert.ok(dryReport.relocated.some((line) => line.includes('IServices')), 'dry run plans the relocation');
     assert.ok(exists(repo, 'src/features/OrderTracking/domain/usecases/TrackOrderUseCase.ts'), 'dry run must not move files');
+    assert.ok(exists(repo, 'src/features/OrderTracking/data/services/IOrderTrackingService.ts'), 'dry run must not move files');
 
     const applied = runScript('migrate-feature.js', ['OrderTracking', '--repo', repo, '--apply']);
     assert.equal(applied.status, 0, applied.stdout + applied.stderr);
 
-    assert.ok(exists(repo, 'src/features/OrderTracking/data/services/IOrderTrackingService.ts'));
-    assert.ok(exists(repo, 'src/features/OrderTracking/domain/repositories/IOrderTrackingRepository.ts'));
+    assert.ok(exists(repo, 'src/features/OrderTracking/data/IServices/IOrderTrackingService.ts'));
+    assert.ok(exists(repo, 'src/features/OrderTracking/domain/IRepositories/IOrderTrackingRepository.ts'));
     assert.ok(exists(repo, 'src/features/OrderTracking/domain/use-cases/TrackOrderUseCase.ts'));
-    assert.ok(!exists(repo, 'src/features/OrderTracking/domain/IServices'), 'old dirs removed');
-    assert.ok(!exists(repo, 'src/features/OrderTracking/domain/IRepositories'), 'old dirs removed');
+    assert.ok(!exists(repo, 'src/features/OrderTracking/data/services/IOrderTrackingService.ts'), 'interface left data/services');
+    assert.ok(exists(repo, 'src/features/OrderTracking/data/services/OrderTrackingService.ts'), 'service impl stays in data/services');
+    assert.ok(!exists(repo, 'src/features/OrderTracking/domain/repositories'), 'old dirs removed');
     assert.ok(!exists(repo, 'src/features/OrderTracking/domain/usecases'), 'old dirs removed');
 
     const useCase = read(repo, 'src/features/OrderTracking/domain/use-cases/TrackOrderUseCase.ts');
     assert.match(useCase, /HAND WRITTEN RULES/, 'hand-written content moved, not regenerated');
-    assert.match(useCase, /'\.\.\/repositories\/IOrderTrackingRepository'/, 'old import path rewritten');
+    assert.match(useCase, /'\.\.\/IRepositories\/IOrderTrackingRepository'/, 'old import path rewritten');
     const testFile = read(repo, `src/features/OrderTracking/${testsDir}/TrackOrderUseCase.test.ts`);
     assert.match(testFile, /'\.\.\/domain\/use-cases\/TrackOrderUseCase'/);
-    assert.match(testFile, /'\.\.\/domain\/repositories\/IOrderTrackingRepository'/);
+    assert.match(testFile, /'\.\.\/domain\/IRepositories\/IOrderTrackingRepository'/);
 });
 
 test('migrate: refuses features without a persisted spec', () => {

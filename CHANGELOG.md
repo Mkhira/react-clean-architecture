@@ -1,5 +1,43 @@
 # Changelog
 
+## 1.13.0 — final interface layout: data/IServices + domain/IRepositories
+
+User decision (2026-08-23), settling the back-and-forth of 1.11.0/1.12.0: the PR #305
+reviewer's LOCATION is right (the service contract is a data-layer port — only the
+repository impl consumes it), but the folder NAMING stays `IServices`/`IRepositories`:
+
+- Service interface: **`data/IServices/I<F>Service.ts`** (entity-only signatures; imports
+  point at domain only). Impl + mock stay in `data/services/`.
+- Repository interface: **`domain/IRepositories/I<F>Repository.ts`** (the domain port).
+- `domain/use-cases/` unchanged.
+
+migrate-feature.js relocates all three older layouts to this one: pre-1.11 `usecases` →
+`use-cases`, `domain/IServices` → `data/IServices` (covers pre-1.11 AND the one-day
+1.12.0), 1.11.x `data/services/I<F>Service.ts` → `data/IServices/` +
+`domain/repositories/` → `domain/IRepositories/`; import paths rewritten in preserved
+files. Templates, register-di.js, audit anchors, examples, and tests updated.
+Suite 146/146. SKILL_VERSION → 1.13.0.
+
+## 1.12.0 — interface folders back to domain/IServices and domain/IRepositories (superseded same day by 1.13.0)
+
+User decision (2026-08-23): keep the `IServices` / `IRepositories` naming. This reverts
+the two folder moves 1.11.0 made and keeps everything else:
+
+- Service interface: `data/services/I<F>Service.ts` → **`domain/IServices/I<F>Service.ts`**
+  (entity-only signatures unchanged; the interface never imports from data/).
+- Repository interface: `domain/repositories/` → **`domain/IRepositories/`**.
+- `domain/use-cases/` (hyphenated) **stays** — that rename was requested separately.
+- Service impl + mock stay in `data/services/`.
+
+migrate-feature.js now relocates BOTH older layouts to the current one: pre-1.11
+`domain/usecases/` → `domain/use-cases/`, and the short-lived 1.11.x locations
+(`data/services/I<F>Service.ts` → `domain/IServices/`, `domain/repositories/` →
+`domain/IRepositories/`) — moves are exact-filename-scoped so a feature whose own name
+starts with "I" never has its impl dragged along, and old import paths are rewritten in
+preserved hand-written files. Templates, register-di.js, audit anchors, example output
+(regenerated, incl. its long-stale manifest), and tests updated. Suite 146/146.
+SKILL_VERSION → 1.12.0.
+
 ## 1.11.0 — repo-convention layout: data/services interface, domain/repositories, use-cases
 
 Aligned the generated structure with the zatcaReact repo's dominant convention (surfaced by

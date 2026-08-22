@@ -53,3 +53,23 @@ file only records where they came from. Never load this during a feature run.
   `domain/use-cases/` (not usecases). Templates + register-di + audit + examples updated;
   migrate-feature.js relocates old-layout features (content-preserved moves + import
   rewrites in hand-written files). Signatures still entity-only — never DTOs.
+- **2026-08-23 — interface folders reverted to IServices/IRepositories (v1.12.0).** User
+  directive: "i need my skill to keep naming IRepositories and IServices" — overrides the
+  v1.11.0 alignment with the PR #305 reviewer's convention. Service interface back at
+  `domain/IServices/I<F>Service.ts`, repository interface at `domain/IRepositories/`;
+  `domain/use-cases/` (hyphenated) stays, as does the impl/mock location in
+  `data/services/`. migrate-feature.js now relocates both older layouts (pre-1.11
+  `usecases` and the one-day 1.11.x locations) to this one; relocation of the interface
+  out of data/services is exact-filename-scoped so features named "I…" keep their impls.
+  Note: this means generated output intentionally differs from the layout PR #305's
+  reviewer asked for — the user's naming preference wins.
+- **2026-08-23 — final interface layout: data/IServices + domain/IRepositories (v1.13.0).**
+  User clarified the v1.12.0 directive: the PR #305 reviewer's LOCATION is correct ("the
+  location wlid said about is correct") — the service contract belongs in the data layer —
+  but the folder NAMING stays IServices/IRepositories. Result: service interface at
+  `data/IServices/I<F>Service.ts` (entity-only imports from domain), repository interface
+  at `domain/IRepositories/`, use-cases hyphenated, impl/mock in `data/services/`. This is
+  the settled layout — v1.11.0 (data/services + domain/repositories naming) and v1.12.0
+  (everything under domain/) were each superseded within a day; don't re-open either.
+  migrate-feature.js relocates all three older layouts here, with `domain/IServices` →
+  `data/IServices` covering both pre-1.11 features and the one-day 1.12.0.

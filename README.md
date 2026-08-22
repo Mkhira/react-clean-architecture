@@ -14,8 +14,8 @@ Paste a curl. The skill interviews you (one question per message), writes a smal
 
 ```
 src/features/<Feature>/
-├── data/          dtos · endpoints · mappers · service (+ its interface) · repository
-├── domain/        entities · errors · repositories (interfaces) · use-cases
+├── data/          dtos · endpoints · mappers · IServices (contract) · service · repository
+├── domain/        entities · errors · IRepositories · use-cases
 ├── presentation/  screens + controllers · styles · queries · translations (en/ar)
 ├── test/          mapper + use-case Jest suites (+ render tests in the design lane)
 └── feature-spec.json   (sanitized, persisted — powers append/remove/rename/migrate)

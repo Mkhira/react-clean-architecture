@@ -11,15 +11,17 @@
  *
  * Strategy — regenerate only what the machine owns, preserve what hands wrote:
  *
- *   RELOCATED FIRST (pre-1.11.0 layout → repo convention, content moved as-is,
- *   old import paths rewritten in preserved files):
- *     domain/IServices/*  → data/services/* · domain/IRepositories/* →
- *     domain/repositories/* · domain/usecases/* → domain/use-cases/*
+ *   RELOCATED FIRST (older layouts → current, content moved as-is, old import
+ *   paths rewritten in preserved files):
+ *     domain/usecases/* → domain/use-cases/*  (pre-1.11.0)
+ *     domain/IServices/* → data/IServices/*  (pre-1.11.0 and the one-day 1.12.0)
+ *     data/services/I<F>Service.ts → data/IServices/*  (the 1.11.x layout)
+ *     domain/repositories/* → domain/IRepositories/*  (the 1.11.x layout)
  *
  *   REGENERATED (machine-owned; transport + contracts):
  *     data/endpoints/endpoints.ts · data/services/<F>Service.ts ·
- *     data/services/I<F>Service.ts · data/repositories/<F>Repository.ts ·
- *     domain/repositories/* · domain/errors/<F>Error.ts
+ *     data/repositories/<F>Repository.ts · data/IServices/* ·
+ *     domain/IRepositories/* · domain/errors/<F>Error.ts
  *     (hand-added error CODES are extracted from the existing file and merged
  *      into the new one — a 1.0.0 union or a 1.1.0+ values array both parse)
  *
@@ -58,7 +60,8 @@ function isMachineOwned(relative, f, includeTypes) {
     if (inFeature(path.join('data', 'endpoints') + path.sep)) return true;
     if (inFeature(path.join('data', 'services') + path.sep)) return true;
     if (inFeature(path.join('data', 'repositories') + path.sep)) return true;
-    if (inFeature(path.join('domain', 'repositories') + path.sep)) return true;
+    if (inFeature(path.join('data', 'IServices') + path.sep)) return true;
+    if (inFeature(path.join('domain', 'IRepositories') + path.sep)) return true;
     if (inFeature(path.join('domain', 'errors') + path.sep)) return true;
     if (includeTypes && inFeature(path.join('data', 'dtos') + path.sep)) return true;
     if (includeTypes && inFeature(path.join('domain', 'entities') + path.sep)) return true;
@@ -66,20 +69,38 @@ function isMachineOwned(relative, f, includeTypes) {
 }
 
 /**
- * Pre-1.11.0 layout → repo convention. Files move as-is (hand-written content
- * preserved); afterwards every .ts file still holding an old-layout import path
- * is rewritten (`domain/IServices` and `domain/`+`data/` are sibling dirs, so a
- * plain segment substitution keeps every relative specifier correct).
+ * Older layouts → current. Files move as-is (hand-written content preserved);
+ * afterwards every .ts file still holding an old-layout import path is
+ * rewritten. Entries: [fromDir, toDir, optional exact-filename filter] — the
+ * filter lets the 1.11.x interface file leave data/services/ without dragging
+ * the service impl/mock along (which is also why the rewrites are scoped to
+ * the exact interface names: a feature called "IntegratedTariff" has an impl
+ * that a loose /^I\w+Service/ pattern would swallow).
  */
-const RELOCATIONS = [
-    [path.join('domain', 'IServices'), path.join('data', 'services')],
-    [path.join('domain', 'IRepositories'), path.join('domain', 'repositories')],
+const relocationsFor = (f) => [
+    // pre-1.11.0
     [path.join('domain', 'usecases'), path.join('domain', 'use-cases')],
+    // pre-1.11.0 AND the one-day 1.12.0 both kept the service contract here
+    [path.join('domain', 'IServices'), path.join('data', 'IServices')],
+    // the 1.11.x layout
+    [path.join('data', 'services'), path.join('data', 'IServices'), `${f.serviceInterface}.ts`],
+    [path.join('domain', 'repositories'), path.join('domain', 'IRepositories')],
 ];
-const IMPORT_REWRITES = [
-    [/domain\/IServices\//g, 'data/services/'],
-    [/IRepositories\//g, 'repositories/'],
+const importRewritesFor = (f) => [
+    // pre-1.11.0 use-case dir
     [/\/usecases\//g, '/use-cases/'],
+    // old service-interface locations → data/IServices. Relative specifiers:
+    // every consumer (service impl, mock, repository impl) sits one dir deep
+    // under data/, so the new relative path is always '../IServices/'.
+    [new RegExp(`'\\.\\./\\.\\./domain/IServices/(${f.serviceInterface})'`, 'g'), "'../IServices/$1'"],
+    [new RegExp(`from '\\./(${f.serviceInterface})'`, 'g'), "from '../IServices/$1'"],
+    [new RegExp(`'\\.\\./services/(${f.serviceInterface})'`, 'g'), "'../IServices/$1'"],
+    // alias imports (DI-style) from either old location
+    [new RegExp(`domain/IServices/(${f.serviceInterface})\\b`, 'g'), 'data/IServices/$1'],
+    [new RegExp(`data/services/(${f.serviceInterface})\\b`, 'g'), 'data/IServices/$1'],
+    // 1.11.x repository-interface locations → domain/IRepositories
+    // (lowercase 'repositories' only — never matches /IRepositories/)
+    [new RegExp(`/repositories/(${f.repositoryInterface})\\b`, 'g'), '/IRepositories/$1'],
 ];
 
 function tsFilesUnder(dir) {
@@ -89,16 +110,17 @@ function tsFilesUnder(dir) {
         .map((entry) => path.join(entry.parentPath ?? entry.path, entry.name));
 }
 
-function relocateOldLayout(repo, feature, apply, report) {
-    const base = path.join(repo, 'src', 'features', feature);
+function relocateOldLayout(repo, f, apply, report) {
+    const base = path.join(repo, 'src', 'features', f.feature);
     // repo-relative paths a dry run WOULD create — the plan loop must not
     // report them as missing when --apply hasn't moved them yet
     const pendingTargets = new Set();
-    for (const [from, to] of RELOCATIONS) {
+    for (const [from, to, onlyName] of relocationsFor(f)) {
         const fromDir = path.join(base, from);
         if (!fs.existsSync(fromDir)) continue;
         const toDir = path.join(base, to);
         for (const name of fs.readdirSync(fromDir)) {
+            if (onlyName && name !== onlyName) continue;
             const target = path.join(toDir, name);
             if (fs.existsSync(target)) {
                 report.problems.push(`${path.join(to, name)}: exists in BOTH old and new layout — resolve by hand before migrating`);
@@ -119,10 +141,11 @@ function relocateOldLayout(repo, feature, apply, report) {
         report.rewrittenImports.push('(dry run — old-layout import paths rewritten on --apply)');
         return pendingTargets;
     }
+    const rewrites = importRewritesFor(f);
     for (const file of tsFilesUnder(base)) {
         const content = fs.readFileSync(file, 'utf8');
         let next = content;
-        for (const [pattern, replacement] of IMPORT_REWRITES) next = next.replace(pattern, replacement);
+        for (const [pattern, replacement] of rewrites) next = next.replace(pattern, replacement);
         if (next !== content) {
             fs.writeFileSync(file, next);
             report.rewrittenImports.push(path.relative(repo, file));
@@ -192,7 +215,7 @@ function main() {
         problems: [],
     };
 
-    const pendingRelocation = relocateOldLayout(repo, feature, apply, report);
+    const pendingRelocation = relocateOldLayout(repo, f, apply, report);
 
     for (const [relative, plannedContent] of planned) {
         const absolute = path.join(repo, relative);

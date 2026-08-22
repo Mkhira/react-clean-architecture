@@ -1,6 +1,6 @@
 import type { IHttpClient } from '@core/http/IHttpClient';
 import type { IConfigService } from '@core/config/IConfigService';
-import type { IProductVerificationService } from './IProductVerificationService';
+import type { IProductVerificationService } from '../IServices/IProductVerificationService';
 import { PRODUCT_VERIFICATION_ENDPOINTS } from '../endpoints/endpoints';
 import { createProductVerificationError } from '../../domain/errors/ProductVerificationError';
 import type { VerifyProductCodeResponseDTO } from '../dtos/VerifyProductCodeDTO';
@@ -8,24 +8,28 @@ import type { VerifyProductCodeResult, VerifyProductCodeInput } from '../../doma
 import { VerifyProductCodeMapper } from '../mappers/VerifyProductCodeMapper';
 import type { GetScanHistoryResult } from '../../domain/entities/GetScanHistoryResult';
 import { GetScanHistoryMapper } from '../mappers/GetScanHistoryMapper';
-import { getDeviceInfo } from '@shared/utils/deviceInfo/deviceInfo';
+import { Platform } from 'react-native';
+import { getStoredLanguage } from '@core/localization/i18n';
+import type { ITaxpayerAuthDeviceContextService } from '@core/device/ITaxpayerAuthDeviceContextService';
 import type { DeviceMetadata } from '../dtos/VerifyProductCodeDTO';
 
 export class ProductVerificationService implements IProductVerificationService {
     constructor(
         private readonly httpClient: IHttpClient,
         private readonly configService: IConfigService,
+        private readonly deviceContext: ITaxpayerAuthDeviceContextService,
     ) {}
 
     private async getDeviceMetadata(): Promise<DeviceMetadata> {
-        const deviceInfo = await getDeviceInfo();
+        const context = await this.deviceContext.getContext();
+        const language = String((await getStoredLanguage()) ?? 'ar');
 
         return {
-            id: deviceInfo.deviceID,
-            name: deviceInfo.deviceName,
-            os: deviceInfo.platFrom,
-            osVersion: deviceInfo.osVersion,
-            language: deviceInfo.language,
+            id: context.deviceId,
+            name: context.deviceName,
+            os: context.devicePlatform,
+            osVersion: String(Platform.Version),
+            language,
         };
     }
 
