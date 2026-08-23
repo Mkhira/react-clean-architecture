@@ -1,4 +1,5 @@
-export type VerifyProductCodeStatus = 'valid' | 'invalid' | 'notFound';
+import type { VerifyProductCodeStatus } from '../constants/productVerification';
+export type { VerifyProductCodeStatus };
 
 export type VerifyProductCodePack = {
     productDescription: string | null;

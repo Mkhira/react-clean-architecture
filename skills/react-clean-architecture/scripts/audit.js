@@ -22,7 +22,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { featureModel, buildFilePlan, testsDirName, SKILL_VERSION } = require('./generate.js');
+const { featureModel, buildFilePlan, testsDirName, SKILL_VERSION, resolveFeatureDir, kebab } = require('./generate.js');
 const { listComponents, listHeadings, diffComponentsDoc } = require('./check-components-md.js');
 
 const HELP = `audit.js — audit a generated feature (structure, DI, env, tsc diff, jest).
@@ -61,7 +61,7 @@ function tscErrors(repo) {
 // ------------------------------------------------------------------ checks ----
 
 function checkStructure(repo, spec, f) {
-    const { files, perEndpoint } = buildFilePlan(spec, f, testsDirName(repo, f.feature));
+    const { files, perEndpoint } = buildFilePlan(spec, f, testsDirName(repo, f.featureDir));
     const expected = spec.mode === 'append' ? [...perEndpoint.keys()] : [...files.keys(), ...perEndpoint.keys()];
     const missing = expected.filter((relative) => !fs.existsSync(path.join(repo, relative)));
     if (missing.length) fail('structure', `missing: ${missing.join(', ')}`);
@@ -69,7 +69,7 @@ function checkStructure(repo, spec, f) {
 }
 
 function checkAnchors(repo, f) {
-    const base = path.join(repo, 'src', 'features', f.feature);
+    const base = path.join(repo, 'src', 'features', f.featureDir);
     const anchored = [
         [path.join(base, 'data', 'endpoints', 'endpoints.ts'), '// <create-feature:endpoints>'],
         [path.join(base, 'data', 'services', `${f.serviceClass}.ts`), '// <create-feature:methods>'],
@@ -104,7 +104,7 @@ function checkI18n(repo, f) {
     // TS barrel (presentation/translations/index.ts).
     const merger = fs.readFileSync(path.join(repo, 'src', 'core', 'localization', 'merger.ts'), 'utf8');
     const problems = [];
-    if (!merger.includes(`import ${f.featureCamel} from '@features/${f.feature}/presentation/translations'`)) {
+    if (!merger.includes(`import ${f.featureCamel} from '@features/${f.featureDir}/presentation/translations'`)) {
         problems.push(`${f.featureCamel} barrel import missing`);
     }
     if (!new RegExp(`^\\s+${f.featureCamel},\\s*$`, 'm').test(merger)) {
@@ -155,7 +155,7 @@ function checkEnv(repo, spec) {
 
 function checkSecretHygiene(repo, spec, f) {
     // no env-sourced header VALUE may appear as a literal inside the generated feature
-    const base = path.join(repo, 'src', 'features', f.feature);
+    const base = path.join(repo, 'src', 'features', f.featureDir);
     const secrets = [];
     for (const endpoint of spec.endpoints) {
         for (const header of endpoint.headers ?? []) {
@@ -189,7 +189,7 @@ function checkDuplicatePaths(repo, spec, f) {
         for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
             const full = path.join(dir, entry.name);
             if (entry.isDirectory()) {
-                if (full.includes(`${path.sep}${f.feature}${path.sep}`) || full.endsWith(`${path.sep}${f.feature}`)) continue;
+                if (full.includes(`${path.sep}${f.featureDir}${path.sep}`) || full.endsWith(`${path.sep}${f.featureDir}`)) continue;
                 walk(full);
             } else if (/\.tsx?$/.test(entry.name)) {
                 const content = fs.readFileSync(full, 'utf8');
@@ -207,7 +207,7 @@ function checkDuplicatePaths(repo, spec, f) {
 }
 
 function checkTodos(repo, f) {
-    const base = path.join(repo, 'src', 'features', f.feature);
+    const base = path.join(repo, 'src', 'features', f.featureDir);
     const statusTodos = [];
     const otherTodos = [];
     const walk = (dir) => {
@@ -244,7 +244,7 @@ function checkReuseFirst(repo, f) {
     if (fs.existsSync(utilsDir)) collect(utilsDir);
     sharedNames.delete('cleanString'); // mapper-local by repo convention
 
-    const base = path.join(repo, 'src', 'features', f.feature);
+    const base = path.join(repo, 'src', 'features', f.featureDir);
     const offenders = [];
     const walk = (dir) => {
         for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -313,7 +313,13 @@ function checkTscDiff(repo) {
 // ---- architecture boundaries (the clean-architecture dependency rule) ----
 
 /** Bare (non-relative) import prefixes the domain layer may use. */
+// `@core/logging/ILogger` is a pure interface with no implementation behind it —
+// use cases depend on the abstraction and the DI container injects the concrete
+// logger (the integrated-tariff use cases are the in-repo precedent). That is
+// dependency inversion, not a layering break, so it is allowed by name. No other
+// @core/ path is: everything else there carries implementation.
 const DOMAIN_ALLOWED_BARE = ['@domain/', '@shared/'];
+const DOMAIN_ALLOWED_EXACT = ['@core/logging/ILogger'];
 
 /** Every import/export-from specifier in a TS file (handles multi-line imports). */
 function importSpecifiers(content) {
@@ -354,8 +360,11 @@ function archBoundaryProblems(repo, feature) {
                 if (!(resolved + path.sep).startsWith(domainDir + path.sep) && resolved !== domainDir) {
                     problems.push(`${relFile} imports '${spec}' (outside domain/)`);
                 }
-            } else if (!DOMAIN_ALLOWED_BARE.some((prefix) => spec.startsWith(prefix))) {
-                problems.push(`${relFile} imports '${spec}' (domain may only use ${DOMAIN_ALLOWED_BARE.join(', ')})`);
+            } else if (
+                !DOMAIN_ALLOWED_BARE.some((prefix) => spec.startsWith(prefix)) &&
+                !DOMAIN_ALLOWED_EXACT.includes(spec)
+            ) {
+                problems.push(`${relFile} imports '${spec}' (domain may only use ${DOMAIN_ALLOWED_BARE.join(', ')}${DOMAIN_ALLOWED_EXACT.length ? `, ${DOMAIN_ALLOWED_EXACT.join(', ')}` : ''})`);
             }
         }
     }
@@ -375,9 +384,119 @@ function archBoundaryProblems(repo, feature) {
 }
 
 function checkArchBoundaries(repo, f) {
-    const problems = archBoundaryProblems(repo, f.feature);
+    const problems = archBoundaryProblems(repo, f.featureDir);
     if (problems.length) fail('arch-boundaries', problems.join('; '));
     else pass('arch-boundaries', 'domain imports only domain/@domain/@shared; data never imports presentation');
+}
+
+/**
+ * Conventions PR reviewers enforce by hand (all from real review rounds on
+ * PR #305). Each one is cheap to check and expensive to fix after review:
+ *   - kebab-case feature directory (PascalCase dirs get rejected)
+ *   - no legacy IServices/ IRepositories/ usecases/ directories
+ *   - feature error types must not widen AppError's code union
+ *   - no duplicated status/enum literal arrays outside domain/constants
+ *   - raw numeric/keyword style values instead of theme tokens
+ *   - files that nothing imports (dead placeholder modules)
+ */
+function checkReviewConventions(repo, f) {
+    const problems = reviewConventionProblems(repo, f);
+    if (problems.length) fail('review-conventions', problems.join('; '));
+    else pass('review-conventions', 'kebab dir, repo layout, AppError codes, shared enums, theme tokens, no dead modules');
+}
+
+/** Source with // and block comments removed — for checks that must not match prose. */
+function stripComments(content) {
+    return content.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+}
+
+function reviewConventionProblems(repo, f) {
+    const base = path.join(repo, 'src', 'features', f.featureDir);
+    const problems = [];
+
+    if (f.featureDir !== kebab(f.feature)) {
+        problems.push(`feature directory "${f.featureDir}" is not kebab-case — reviewers require src/features/${kebab(f.feature)} (run rename-feature.js)`);
+    }
+    // NOTE: this skill deliberately uses data/IServices + domain/IRepositories —
+    // the owner's standing naming decision (docs/decisions.md, v1.12.0/v1.13.0),
+    // which knowingly differs from the PR #305 reviewer's preference. Only the
+    // genuinely dead pre-1.11.0 layouts are flagged here.
+    for (const legacy of [['domain', 'usecases'], ['domain', 'IServices']]) {
+        if (fs.existsSync(path.join(base, ...legacy))) {
+            const correct = { usecases: 'domain/use-cases', IServices: 'data/IServices' }[legacy[1]];
+            problems.push(`legacy directory ${legacy.join('/')}/ — the current layout is ${correct}/ (run migrate-feature.js)`);
+        }
+    }
+
+    const errorFile = path.join(base, 'domain', 'errors', `${f.errorType}.ts`);
+    if (fs.existsSync(errorFile)) {
+        // strip comments first — the generated file NAMES these anti-patterns in a
+        // "do not do this" comment, which would otherwise flag itself
+        const content = stripComments(fs.readFileSync(errorFile, 'utf8'));
+        if (/Omit<\s*AppError\s*,\s*'code'\s*>/.test(content)) {
+            problems.push(`${f.errorType}.ts widens AppError with Omit<AppError,'code'> — reuse AppError's own code union instead`);
+        }
+        for (const invented of ['HTTP_ERROR', 'PARSE_ERROR']) {
+            if (content.includes(`'${invented}'`)) {
+                problems.push(`${f.errorType}.ts declares '${invented}', which is not an AppError code — map it onto NETWORK_ERROR / VALIDATION_ERROR`);
+            }
+        }
+    }
+
+    // the same status literal array retyped in more than one file
+    const statusArrays = new Map();
+    for (const file of tsFilesUnder(base)) {
+        const relative = path.relative(repo, file);
+        if (relative.includes(`${path.sep}constants${path.sep}`)) continue;
+        for (const match of stripComments(fs.readFileSync(file, 'utf8')).matchAll(/\[\s*((?:'[A-Z][A-Z0-9_]*'\s*,\s*){2,}'[A-Z][A-Z0-9_]*'\s*)\]/g)) {
+            const key = match[1].replace(/\s+/g, '');
+            if (!statusArrays.has(key)) statusArrays.set(key, []);
+            statusArrays.get(key).push(relative);
+        }
+    }
+    for (const [, files] of statusArrays) {
+        if (files.length > 1) {
+            problems.push(`the same enum literal array appears in ${files.join(' and ')} — move it to domain/constants and import it`);
+        }
+    }
+
+    // raw values in style files (theme tokens exist for these)
+    for (const file of tsFilesUnder(base)) {
+        if (!/styles\.ts$/.test(file)) continue;
+        const relative = path.relative(repo, file);
+        for (const [pattern, hint] of [
+            [/^\s*flex:\s*\d/m, 'flex: <number> → theme.flex1'],
+            [/^\s*display:\s*'/m, "display: '<value>' → theme.display.*"],
+            [/^\s*(flexDirection|alignItems|justifyContent|alignSelf|textAlign):\s*'/m, "raw RN keyword → the matching theme token"],
+            [/^\s*(fontSize|lineHeight|borderRadius|padding|margin|gap)[A-Za-z]*:\s*\d/m, 'raw number → theme.typography / theme.spacing / theme.borderRadius'],
+        ]) {
+            if (pattern.test(stripComments(fs.readFileSync(file, 'utf8')))) {
+                problems.push(`${relative}: ${hint}`);
+            }
+        }
+    }
+
+    // dead modules: a feature file nothing else in the repo imports
+    const srcDir = path.join(repo, 'src');
+    const allSource = tsFilesUnder(srcDir).map((file) => fs.readFileSync(file, 'utf8')).join('\n');
+    // Only presentation ROOT modules: that is where the placeholder files land
+    // (the live finding was an unused presentation/types.ts). Files under
+    // utils/, components/ and screens/ are work-in-progress or entry points
+    // wired later by navigation, so they are out of scope here.
+    const presentationRoot = path.join(base, 'presentation');
+    const rootEntries = fs.existsSync(presentationRoot)
+        ? fs.readdirSync(presentationRoot, { withFileTypes: true }).filter((entry) => entry.isFile() && /\.tsx?$/.test(entry.name))
+        : [];
+    for (const entry of rootEntries) {
+        const name = entry.name.replace(/\.tsx?$/, '');
+        if (['index', 'controller', 'styles', 'queries', 'routes'].includes(name)) continue;
+        const referenced = new RegExp(`from '[^']*${name}'|from "[^"]*${name}"`).test(allSource);
+        if (!referenced) {
+            problems.push(`${path.relative(repo, path.join(presentationRoot, entry.name))} is imported nowhere — delete it or wire it up (reviewers flag dead placeholder modules)`);
+        }
+    }
+
+    return problems;
 }
 
 /**
@@ -406,11 +525,11 @@ function checkComponentsMd(repo) {
 }
 
 function checkJest(repo, f) {
-    const result = run('npx', ['jest', `src/features/${f.feature}`, '--watchAll=false', '--passWithNoTests'], repo);
+    const result = run('npx', ['jest', `src/features/${f.featureDir}`, '--watchAll=false', '--passWithNoTests'], repo);
     const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
     const summary = output.split('\n').filter((line) => /^(Tests|Test Suites):/.test(line.trim())).join('; ');
     if (result.status !== 0) fail('jest', summary || output.split('\n').slice(-15).join('\n'));
-    else if (/Tests:\s+0 total/.test(output) || !/Tests:/.test(output)) warn('jest', `no tests ran for src/features/${f.feature}`);
+    else if (/Tests:\s+0 total/.test(output) || !/Tests:/.test(output)) warn('jest', `no tests ran for src/features/${f.featureDir}`);
     else pass('jest', summary || 'suites green');
 }
 
@@ -441,7 +560,7 @@ function sanitizedSpec(spec) {
  * and the stored mode stays "create" (the persisted spec IS the full feature).
  */
 function specForPersist(repo, spec, f) {
-    const target = path.join(repo, 'src', 'features', f.feature, 'feature-spec.json');
+    const target = path.join(repo, 'src', 'features', f.featureDir, 'feature-spec.json');
     if (spec.mode !== 'append' || !fs.existsSync(target)) return spec;
     try {
         const existing = JSON.parse(fs.readFileSync(target, 'utf8'));
@@ -460,7 +579,7 @@ function specForPersist(repo, spec, f) {
 }
 
 function persistSpec(repo, spec, f) {
-    const target = path.join(repo, 'src', 'features', f.feature, 'feature-spec.json');
+    const target = path.join(repo, 'src', 'features', f.featureDir, 'feature-spec.json');
     fs.writeFileSync(target, JSON.stringify(sanitizedSpec(specForPersist(repo, spec, f)), null, 2) + '\n');
     const relative = path.relative(repo, target);
 
@@ -511,6 +630,9 @@ function main() {
         return 1;
     }
     const f = featureModel(spec);
+    // append/audit against a legacy PascalCase feature must target the dir that
+    // actually exists; fresh features resolve to the kebab-case name
+    f.featureDir = resolveFeatureDir(repo, spec.feature);
 
     checkStructure(repo, spec, f);
     checkAnchors(repo, f);
@@ -522,6 +644,7 @@ function main() {
     checkTodos(repo, f);
     checkReuseFirst(repo, f);
     checkArchBoundaries(repo, f);
+    checkReviewConventions(repo, f);
     checkComponentsMd(repo);
     if (!argv.includes('--skip-tsc')) checkTscDiff(repo);
     if (!argv.includes('--skip-jest')) checkJest(repo, f);
@@ -582,4 +705,4 @@ if (require.main === module) {
     process.exit(main());
 }
 
-module.exports = { normalizeTscError, freshTscErrors, importSpecifiers, archBoundaryProblems };
+module.exports = { normalizeTscError, freshTscErrors, importSpecifiers, archBoundaryProblems, reviewConventionProblems };

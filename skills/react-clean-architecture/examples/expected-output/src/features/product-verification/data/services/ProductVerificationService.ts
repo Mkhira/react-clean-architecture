@@ -51,7 +51,7 @@ export class ProductVerificationService implements IProductVerificationService {
         }
         if (!response.ok) {
             const text = await response.text();
-            throw createProductVerificationError('HTTP_ERROR', `${action} HTTP ${response.status}: ${text}`);
+            throw createProductVerificationError('NETWORK_ERROR', `${action} HTTP ${response.status}: ${text}`);
         }
         return response;
     }
@@ -60,7 +60,7 @@ export class ProductVerificationService implements IProductVerificationService {
         try {
             return (await response.json()) as TResponseDTO;
         } catch (error) {
-            throw createProductVerificationError('PARSE_ERROR', `${action} response was not valid JSON`, error);
+            throw createProductVerificationError('VALIDATION_ERROR', `${action} response was not valid JSON`, error);
         }
     }
 

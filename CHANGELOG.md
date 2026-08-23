@@ -1,5 +1,44 @@
 # Changelog
 
+## 1.14.0 — PR #305 review-round hardening
+
+The second review round on PR #305 produced 41 comments. The mechanical causes are now
+generator rules and audit checks, so the same findings can't recur:
+
+- **Kebab-case feature directories.** `src/features/application-status`, matching
+  `e-declarations` / `integrated-tariff`. Identifiers stay PascalCase: `f.featureDir` is
+  the path, `f.feature` the identifier. `resolveFeatureDir()` keeps legacy PascalCase
+  directories working for append, audit, rename, remove, migrate and rollback.
+- **`domain/constants/<featureCamel>.ts`** is generated whenever an endpoint declares a
+  `statusEnum`, and is the single source for that value list: the entity imports and
+  re-exports the derived union instead of retyping the literals, and mappers, mock
+  catalogs and filter options all import it. (The review found one status array retyped
+  in five files.)
+- **Errors reuse `AppError`.** No `Omit<AppError, 'code'>`, no invented `HTTP_ERROR` /
+  `PARSE_ERROR` — those map onto `NETWORK_ERROR` / `VALIDATION_ERROR`. `migrate-feature.js`
+  reads the allowed union from `src/shared/types/errors.ts`, drops a hand-added code
+  outside it, reports it, and refuses to re-stamp the spec until it's resolved.
+- **Use cases log before failing.** Each takes an `ILogger` and calls
+  `logger.exception(...)` before returning `Result.err`; `register-di.js` registers them
+  through `withLogger`. `@core/logging/ILogger` is an explicit arch-boundary exception —
+  a pure interface, following the integrated-tariff precedent.
+- **No dead placeholder `presentation/types.ts`**, and generated styles use theme tokens
+  (`flex: theme.flex1`).
+- **New `review-conventions` audit check** covering all of the above plus theme-token
+  usage in style files and unimported presentation-root modules.
+  `register-navigation.js` now flags a `serviceFlow.pages.<camel>` translation object that
+  duplicates `services.<camel>`.
+- **Bug fix:** a nullable date field generated
+  `formatNumericGregorianDate(dto.X)` where `X: string | null`, which does not typecheck
+  against the helper's `string | undefined` parameter. Now coalesced.
+
+Interface-folder naming is deliberately unchanged (`data/IServices` +
+`domain/IRepositories`) — see docs/decisions.md; PR #305's reviewer prefers
+`data/services` + `domain/repositories`, which conflicts with the standing owner
+directive, so it needs an owner decision rather than a silent flip.
+
+Suite 146/146. SKILL_VERSION → 1.14.0.
+
 ## 1.13.0 — final interface layout: data/IServices + domain/IRepositories
 
 User decision (2026-08-23), settling the back-and-forth of 1.11.0/1.12.0: the PR #305

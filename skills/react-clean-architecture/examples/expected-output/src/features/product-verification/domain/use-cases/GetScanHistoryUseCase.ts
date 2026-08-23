@@ -1,11 +1,15 @@
 import { IUseCase } from '@domain/shared/IUseCase';
 import { Result } from '@shared/types/Result';
+import type { ILogger } from '@core/logging/ILogger';
 import type { IProductVerificationRepository } from '../IRepositories/IProductVerificationRepository';
 import type { GetScanHistoryResult, GetScanHistoryInput } from '../entities/GetScanHistoryResult';
 import { createProductVerificationError, isProductVerificationError, type ProductVerificationError } from '../errors/ProductVerificationError';
 
 export class GetScanHistoryUseCase implements IUseCase<GetScanHistoryInput, Result<GetScanHistoryResult, ProductVerificationError>> {
-    constructor(private readonly repository: IProductVerificationRepository) {}
+    constructor(
+        private readonly repository: IProductVerificationRepository,
+        private readonly logger: ILogger
+    ) {}
 
     async execute(input: GetScanHistoryInput): Promise<Result<GetScanHistoryResult, ProductVerificationError>> {
         // TODO(claude): business rules (user story was skipped)
@@ -13,6 +17,8 @@ export class GetScanHistoryUseCase implements IUseCase<GetScanHistoryInput, Resu
             const result = await this.repository.getScanHistory(input);
             return Result.ok(result);
         } catch (error) {
+            // never swallow a failure silently — reviewers require the log
+            this.logger.exception('getScanHistory failed', error);
             if (isProductVerificationError(error)) {
                 return Result.err(error);
             }

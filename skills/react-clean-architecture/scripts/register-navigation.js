@@ -23,7 +23,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { camel, kebab, snakeUpper } = require('./generate.js');
+const { camel, kebab, pascal, snakeUpper } = require('./generate.js');
 
 const HELP = `register-navigation.js — register a feature's screen in navigation (DESIGN.md §5).
 
@@ -266,7 +266,7 @@ function updateRoutes(repo, n) {
 }
 
 function ensureStarterScreen(repo, n) {
-    const relative = `src/features/${n.feature}/presentation/screens/${n.feature}Screen.tsx`;
+    const relative = `src/features/${n.featureDir}/presentation/screens/${n.feature}Screen.tsx`;
     if (fs.existsSync(path.join(repo, relative))) return;
     // design-only lane, screens not built yet — registration must still compile
     createFile(repo, relative, `import React from 'react';
@@ -282,7 +282,7 @@ export default function ${n.feature}Screen() {
 
 function createRouteFile(repo, n) {
     createFile(repo, `app/service-flow/${n.serviceId}.tsx`, `import React from 'react';
-import ${n.feature}Screen from '@features/${n.feature}/presentation/screens/${n.feature}Screen';
+import ${n.feature}Screen from '@features/${n.featureDir}/presentation/screens/${n.feature}Screen';
 
 export default function ${n.feature}Route() {
     return <${n.feature}Screen />;
@@ -311,7 +311,7 @@ function updatePageRegistry(repo, n) {
     const unit = indentUnit(content);
     content = insertBlock(
         content, '// <design-lane:page-imports>',
-        `import ${n.feature}Screen from '@features/${n.feature}/presentation/screens/${n.feature}Screen';`,
+        `import ${n.feature}Screen from '@features/${n.featureDir}/presentation/screens/${n.feature}Screen';`,
         new RegExp(`^import ${n.feature}Screen\\b`, 'm'), label, `import ${n.feature}Screen`
     );
     content = insertBlock(
@@ -412,6 +412,16 @@ function updateTranslations(repo, n) {
             report.needsManual.push(`${label}: no top-level "services" object — add services.${n.featureCamel} by hand`);
             continue;
         }
+        // `services.<camel>` is the ONE copy of the service's title/description —
+        // the page registry points at it too. A second object under
+        // serviceFlow.pages.<camel> is a duplicate reviewers reject; flag it so
+        // whoever hand-added it deletes it instead of drifting the two apart.
+        if (data.serviceFlow?.pages?.[n.featureCamel]) {
+            report.needsManual.push(
+                `${label}: serviceFlow.pages.${n.featureCamel} duplicates services.${n.featureCamel} — ` +
+                `delete the serviceFlow.pages copy and keep the page registry pointing at services.${n.featureCamel}.*`
+            );
+        }
         if (data.services[n.featureCamel]) {
             report.skippedExisting.push(`${label}: services.${n.featureCamel}`);
             continue;
@@ -429,7 +439,7 @@ function updateTranslations(repo, n) {
 }
 
 function createFeatureRoutes(repo, n) {
-    createFile(repo, `src/features/${n.feature}/presentation/routes.ts`, `import { Routes } from '@core/navigation/routes/Routes';
+    createFile(repo, `src/features/${n.featureDir}/presentation/routes.ts`, `import { Routes } from '@core/navigation/routes/Routes';
 import type { AppRoute } from '@core/navigation/routes/RouteContract';
 
 /** SERVICES_DATA id + deep-link alias (\`zatca://service-flow/${n.serviceId}\`). */
@@ -474,7 +484,9 @@ function main() {
     }
 
     const n = {
-        feature: spec.feature,
+        feature: pascal(spec.feature),
+        // kebab-case on disk (repo convention); identifiers stay PascalCase
+        featureDir: kebab(spec.feature),
         featureCamel: camel(spec.feature),
         pageKey: camel(spec.feature),
         serviceId: kebab(spec.feature),

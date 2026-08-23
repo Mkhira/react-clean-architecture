@@ -50,7 +50,7 @@ test('mock: true generates <Feature>MockService next to the real service', () =>
     const { repo, result } = generateInto(spec);
     assert.equal(result.status, 0);
 
-    const base = 'src/features/OrderTracking/data/services';
+    const base = 'src/features/order-tracking/data/services';
     assert.ok(exists(repo, `${base}/OrderTrackingService.ts`), 'real service still generated for the later swap');
     assert.ok(exists(repo, `${base}/OrderTrackingMockService.ts`), 'mock service generated');
 
@@ -75,7 +75,7 @@ test('mock: true — manifest tells Claude to enrich the mock catalog', () => {
 
 test('mock omitted / false: no MockService is generated', () => {
     const { repo } = generateInto(baseSpec());
-    assert.ok(!exists(repo, 'src/features/OrderTracking/data/services/OrderTrackingMockService.ts'));
+    assert.ok(!exists(repo, 'src/features/order-tracking/data/services/OrderTrackingMockService.ts'));
 });
 
 test('validateSpec rejects a non-boolean mock', () => {
@@ -92,7 +92,7 @@ test('register-di with mock: container registers the MockService with a swap com
     assert.equal(di.status, 0, di.stderr);
 
     const container = read(repo, 'src/core/di/container.ts');
-    assert.match(container, /import \{ OrderTrackingMockService \} from '@features\/OrderTracking\/data\/services\/OrderTrackingMockService';/);
+    assert.match(container, /import \{ OrderTrackingMockService \} from '@features\/order-tracking\/data\/services\/OrderTrackingMockService';/);
     assert.match(container, /useFactory: \(\) => new OrderTrackingMockService\(\)/);
     assert.match(container, /MOCK backend \(spec\.mock\)/, 'swap comment present');
     assert.doesNotMatch(container, /import \{ OrderTrackingService \}/, 'real service NOT imported (would be a dead import)');
@@ -114,7 +114,7 @@ test('mock append: a new endpoint gets a self-contained mock method at the ancho
     const manual = JSON.parse(result.stdout).needsManual;
     assert.ok(!manual.some((entry) => entry.includes('MockService')), JSON.stringify(manual));
 
-    const mock = read(repo, 'src/features/OrderTracking/data/services/OrderTrackingMockService.ts');
+    const mock = read(repo, 'src/features/order-tracking/data/services/OrderTrackingMockService.ts');
     assert.match(mock, /async getOrders\(_query:/);
     // append inserts inside the class body, so the sample must be a LOCAL const
     assert.match(mock, /const sample: GetOrdersResponseDTO =/);
@@ -129,7 +129,7 @@ test('cache "always-fresh" emits staleTime: 0 (and no storeDuration) in the quer
     spec.endpoints = [getEndpoint({ cache: 'always-fresh' })];
     const { repo, result } = generateInto(spec);
     assert.equal(result.status, 0, result.stderr);
-    const queries = read(repo, 'src/features/OrderTracking/presentation/queries.ts');
+    const queries = read(repo, 'src/features/order-tracking/presentation/queries.ts');
     assert.match(queries, /staleTime: 0/);
     assert.doesNotMatch(queries, /storeDuration/);
 });
@@ -138,14 +138,14 @@ test('cache duration still emits storeDuration; null emits neither', () => {
     const spec = baseSpec();
     spec.endpoints = [getEndpoint({ cache: '6-hours' })];
     const { repo } = generateInto(spec);
-    const queries = read(repo, 'src/features/OrderTracking/presentation/queries.ts');
+    const queries = read(repo, 'src/features/order-tracking/presentation/queries.ts');
     assert.match(queries, /storeDuration: '6-hours'/);
     assert.doesNotMatch(queries, /staleTime/);
 
     const plain = baseSpec();
     plain.endpoints = [getEndpoint()];
     const { repo: repo2 } = generateInto(plain);
-    const queries2 = read(repo2, 'src/features/OrderTracking/presentation/queries.ts');
+    const queries2 = read(repo2, 'src/features/order-tracking/presentation/queries.ts');
     assert.doesNotMatch(queries2, /storeDuration|staleTime/);
 });
 

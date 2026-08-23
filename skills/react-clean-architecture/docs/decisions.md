@@ -73,3 +73,33 @@ file only records where they came from. Never load this during a feature run.
   (everything under domain/) were each superseded within a day; don't re-open either.
   migrate-feature.js relocates all three older layouts here, with `domain/IServices` →
   `data/IServices` covering both pre-1.11 features and the one-day 1.12.0.
+- **2026-08-23 — v1.14.0: PR #305 review-round hardening (kebab dirs, shared enums,
+  AppError alignment, logging, review-conventions audit).** Second review round on PR #305
+  (WalidAzgear + abdlafi) produced 41 comments; the mechanical causes are now generator
+  rules, not review findings. Changes: (1) feature DIRECTORY is kebab-case
+  (`src/features/application-status`) while identifiers stay PascalCase — `f.featureDir` is
+  the path, `f.feature` the identifier, and `resolveFeatureDir()` keeps legacy PascalCase
+  dirs working for append/audit/lifecycle; (2) `domain/constants/<featureCamel>.ts` is
+  generated whenever an endpoint has a `statusEnum` and is the ONLY place the value list
+  exists — the entity imports+re-exports the derived union, mappers/mocks/filters import it
+  (the review found the same array retyped in five files); (3) the feature error type IS
+  `AppError` — no `Omit<AppError,'code'>`, no invented `HTTP_ERROR`/`PARSE_ERROR` (they map
+  to `NETWORK_ERROR`/`VALIDATION_ERROR`); migrate DROPS a hand-added code outside AppError's
+  union, reports it, and refuses to re-stamp the spec, and it now reads the allowed union
+  from `src/shared/types/errors.ts` so it tracks AppError; (4) use cases take an `ILogger`
+  and log before every `Result.err` — `register-di.js` wires them through `withLogger`, and
+  `@core/logging/ILogger` is an explicit arch-boundary exception (a pure interface, the
+  integrated-tariff precedent); (5) the dead placeholder `presentation/types.ts` is no
+  longer generated; (6) generated styles use theme tokens (`theme.flex1`); (7) a new
+  `review-conventions` audit check enforces all of the above plus theme-token usage and
+  dead presentation-root modules, and `register-navigation.js` now flags a
+  `serviceFlow.pages.<camel>` object duplicating `services.<camel>`. Also fixed a real
+  generator bug: a nullable date field produced
+  `formatNumericGregorianDate(string | null)`, which does not typecheck. Suite 146/146.
+  **Interface-folder naming deliberately UNCHANGED** (`data/IServices` +
+  `domain/IRepositories`): PR #305's reviewer asked for `data/services` +
+  `domain/repositories`, but that contradicts the owner's standing v1.12.0/v1.13.0
+  directive ("keep naming IRepositories and IServices", "don't re-open"). The skill keeps
+  the owner's naming and the audit does NOT flag it; the zatcaReact repo's
+  application-status feature was moved to the reviewer's naming on the PR branch only.
+  This divergence is intentional and needs an owner decision to settle.

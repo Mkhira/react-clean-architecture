@@ -71,7 +71,7 @@ you're on. Every step still runs; only the narration is trimmed.
 
 Checklist items 3–8 expand under "Step 3" / "Step 5 — Generate, fill, register, audit"
 below (Step 5's sub-items 1–5 are checklist items 4–8); the REUSE-FIRST rule (Step 4
-section) applies throughout Step 5–8b hand-writing.
+section) and the REVIEW CONVENTIONS (Step 4b) apply throughout Step 5–8b hand-writing.
 
 ## Context-compaction checkpoints (mandatory pauses)
 
@@ -107,8 +107,13 @@ the user returns, re-read those files as needed; never rely on pre-compaction ch
 
 ## Step 1 — Feature name
 
-1. Normalize to PascalCase (strip symbols/spaces); reject empty. Flat PascalCase under
-   `src/features/` is the standard (existing kebab-case/nested features are legacy).
+1. Normalize to PascalCase for IDENTIFIERS (classes, tokens, types) — but the on-disk
+   directory is **kebab-case**: `src/features/application-status`, matching
+   `e-declarations` / `integrated-tariff` / `content-management`. Reviewers reject
+   PascalCase feature directories. The scripts handle this split for you (`f.featureDir`
+   is the path, `f.feature` the identifier); never build a feature path from `f.feature`.
+   Reject an empty name. (Legacy PascalCase features still on disk keep working — the
+   lifecycle scripts resolve whichever directory exists — but new features are kebab.)
 2. Existence check is **case-insensitive** (macOS FS) and must also scan ONE level of nested
    category dirs (e.g. `verificationFeatures/TaxStampValidation`).
    - Exists → **append mode** (read [APPEND.md](APPEND.md) now). New → full scaffold.
@@ -302,6 +307,56 @@ an existing utility. Only if nothing fits: create it in the FEATURE's `presentat
 never silently add to `src/shared/utils`. The generated templates already import
 `formatNumericGregorianDate`, `useResolve`, `getStoredLanguage`, etc. — keep it that way in
 everything you hand-write. (`cleanString` stays mapper-local; that is the repo convention.)
+
+## Step 4b — REVIEW CONVENTIONS (mandatory for everything you hand-write)
+
+Every rule below comes from a real PR review round on this repo — each one was raised by a
+human reviewer against skill-generated code. `audit.js`'s `review-conventions` check
+enforces the mechanical ones; the rest are on you. Apply them to hand-written code in
+Steps 5–8b and to any screen you build in the design lane.
+
+**Single source of truth for enums.** A status/type value list lives in
+`domain/constants/<featureCamel>.ts` and NOWHERE else. The entity union derives from it
+(`(typeof VALUES)[number]`), mappers validate against it, mock catalogs iterate it, and
+filter/tab options map over it. If you catch yourself typing the same
+`['DRAFT', 'SUBMITTED', …]` a second time — in a mapper, a mock, a controller, a card
+component — import it instead. This applies to any repeated literal set, not just statuses.
+
+**Errors reuse `AppError`.** `src/shared/types/errors.ts` owns the code union
+(`NETWORK_ERROR | AUTH_ERROR | TIMEOUT | VALIDATION_ERROR`). Never invent feature codes
+(`HTTP_ERROR`, `PARSE_ERROR`) and never widen with `Omit<AppError, 'code'>`. Map real
+failures onto the existing four: a malformed payload is `VALIDATION_ERROR`, a bad HTTP
+response is `NETWORK_ERROR`. A genuinely new code goes into `AppError` itself, where every
+feature shares it — and that is a core edit, so ask first.
+
+**Never swallow a failure.** Every `catch` that converts to `Result.err` logs first via the
+injected `ILogger` (`this.logger.exception(...)`). Use cases take the logger as a
+constructor arg; `register-di.js` wires it through `withLogger`.
+
+**Presentation file placement.** Magic numbers, key arrays, debounce delays, tag/variant
+maps → `presentation/constants.ts`. Prop and state types → `presentation/types.ts`. Data
+fetching, derived values, `renderItem`/`keyExtractor`/`pagination` memos, and every
+handler → the controller; screens receive finished values and render them. A screen that
+computes anything beyond JSX has logic in the wrong file.
+
+**No dead modules.** Never leave a placeholder file nothing imports — reviewers flag it
+immediately ("this is not used at all"). Create `constants.ts` / `types.ts` when there is
+real content for them, not preemptively.
+
+**Theme tokens only in styles.** No raw numbers or RN keyword strings in a `styles.ts`:
+`flex: theme.flex1`, `display: theme.display.none`, `flexDirection: theme.flexDirection.row`,
+spacing/radius/typography from their scales. If a token genuinely doesn't exist, ADD it to
+`src/core/theme/baseStyles.ts` and the `Theme` type in `src/core/theme/types.ts`, then use
+it — that is the reviewers' stated preference over a raw value.
+
+**Text uses `Label` presets.** Prefer `<Label type="…">` (`defaultParagraph`, `cardTitle`,
+`h1Header`, `h2Header`, `labelName`, `fieldLabelName`, `fieldInput`) over restating
+`fontSize`/`lineHeight` in a style. Override in the style only the property no preset
+carries (e.g. a SemiBold weight at a size no type provides) and say why in a comment.
+
+**One translation object per service.** The service's title/description live at
+`services.<camel>.*` and the page registry points there. Never add a second copy under
+`serviceFlow.pages.<camel>` — two objects drift apart and reviewers reject the duplicate.
 
 ## Step 5 — Generate, fill, register, audit
 

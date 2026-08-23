@@ -1,21 +1,22 @@
 import type { AppError } from '@shared/types/errors';
 
-// Single source of truth for this feature's error codes — the union type and
-// the runtime guard both derive from it, so adding a code is a one-line change.
+// The feature reuses the app-wide error contract as-is. AppError's code union
+// (src/shared/types/errors.ts) is the ONLY allowed set — do not invent feature
+// codes like HTTP_ERROR/PARSE_ERROR and do not widen the type with
+// Omit<AppError, 'code'>: reviewers reject both. Map transport failures onto
+// these four (a bad payload is VALIDATION_ERROR, a bad response is
+// NETWORK_ERROR). If a genuinely new code is needed, add it to AppError itself
+// so every feature shares it.
 export const PRODUCT_VERIFICATION_ERROR_CODE_VALUES = [
     'NETWORK_ERROR',
-    'HTTP_ERROR',
-    'PARSE_ERROR',
-    'VALIDATION_ERROR',
     'AUTH_ERROR',
     'TIMEOUT',
-] as const;
+    'VALIDATION_ERROR',
+] as const satisfies readonly AppError['code'][];
 
 export type PRODUCT_VERIFICATION_ERROR_CODES = (typeof PRODUCT_VERIFICATION_ERROR_CODE_VALUES)[number];
 
-export type ProductVerificationError = Omit<AppError, 'code'> & {
-    code: PRODUCT_VERIFICATION_ERROR_CODES;
-};
+export type ProductVerificationError = AppError;
 
 export const createProductVerificationError = (
     code: PRODUCT_VERIFICATION_ERROR_CODES,

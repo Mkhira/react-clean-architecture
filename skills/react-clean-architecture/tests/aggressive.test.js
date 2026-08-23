@@ -141,7 +141,7 @@ export const featureTranslationsFor = (language: AppLanguage) => featureTranslat
     const result = runScript('register-di.js', [specPath, '--repo', repo]);
     assert.equal(result.status, 0);
     const merger = read(repo, 'src/core/localization/merger.ts');
-    assert.match(merger, /import orderTracking from '@features\/OrderTracking\/presentation\/translations';/);
+    assert.match(merger, /import orderTracking from '@features\/order-tracking\/presentation\/translations';/);
     assert.match(merger, /^    orderTracking,$/m);
 });
 
@@ -180,7 +180,7 @@ test('rollback dry run: reports the plan, touches nothing', () => {
     assert.equal(result.status, 0);
     assert.equal(report.mode, 'dry-run');
     assert.ok(report.deleted.length >= 15);
-    assert.ok(exists(repo, 'src/features/OrderTracking/data/services/OrderTrackingService.ts'), 'dry run must not delete');
+    assert.ok(exists(repo, 'src/features/order-tracking/data/services/OrderTrackingService.ts'), 'dry run must not delete');
     assert.ok(exists(repo, '.claude-skill-manifest.json'), 'dry run must keep the manifest');
 });
 
@@ -194,7 +194,7 @@ test('rollback --apply: created files deleted, patched files restored, tree back
 
     const result = runScript('rollback.js', ['--repo', repo, '--apply']);
     assert.equal(result.status, 0, result.stdout + result.stderr);
-    assert.ok(!exists(repo, 'src/features/OrderTracking'), 'feature dir fully removed (incl. empty dirs)');
+    assert.ok(!exists(repo, 'src/features/order-tracking'), 'feature dir fully removed (incl. empty dirs)');
     assert.equal(read(repo, 'src/core/di/tokens.ts'), tokensBefore, 'patched file restored');
     assert.equal(read(repo, '.env.development').includes('ORDER_TRACKING'), false, 'env restored');
     assert.ok(!exists(repo, '.claude-skill-manifest.json'), 'manifest cleaned up');
@@ -252,7 +252,7 @@ test('remove: only THIS feature\'s exact query keys are deleted, prefix-sharing 
     let keys = read(repo, 'src/data/services/keys.ts');
     keys = keys.replace("BANNERS: 'banners',", "BANNERS: 'banners',\n    ORDER_TRACKING_STATUS: 'order-tracking-status',");
     fs.writeFileSync(path.join(repo, 'src/data/services/keys.ts'), keys);
-    fs.copyFileSync(specPath, path.join(repo, 'src/features/Order/feature-spec.json'));
+    fs.copyFileSync(specPath, path.join(repo, 'src/features/order/feature-spec.json'));
 
     const result = runScript('remove-feature.js', ['Order', '--repo', repo, '--apply']);
     assert.equal(result.status, 0, result.stdout + result.stderr);
@@ -267,14 +267,14 @@ test('rename: queries.ts usage sites AND keys.ts declaration both move to the ne
     const specPath = writeSpec(makeTmpDir('s'), spec);
     runScript('generate.js', [specPath, '--repo', repo]);
     runScript('register-di.js', [specPath, '--repo', repo]);
-    fs.copyFileSync(specPath, path.join(repo, 'src/features/OrderTracking/feature-spec.json'));
+    fs.copyFileSync(specPath, path.join(repo, 'src/features/order-tracking/feature-spec.json'));
 
     const result = runScript('rename-feature.js', ['OrderTracking', 'ShipmentTrace', '--repo', repo, '--apply']);
     assert.equal(result.status, 0, result.stdout + result.stderr);
     const keys = read(repo, 'src/data/services/keys.ts');
     assert.match(keys, /SHIPMENT_TRACE_LIST_ORDERS: 'shipment-trace-list-orders',/);
     assert.ok(!keys.includes('ORDER_TRACKING_LIST_ORDERS'));
-    const queries = read(repo, 'src/features/ShipmentTrace/presentation/queries.ts');
+    const queries = read(repo, 'src/features/shipment-trace/presentation/queries.ts');
     assert.match(queries, /QUERIES_KEYS\.SHIPMENT_TRACE_LIST_ORDERS\]/, 'usage site renamed');
     assert.ok(!queries.includes('ORDER_TRACKING_LIST_ORDERS'));
 });
@@ -304,14 +304,14 @@ test('append GET to a POST-only feature creates queries.ts with the hook + needs
     const repo = makeFixtureRepo();
     const createPath = writeSpec(makeTmpDir('s'), baseSpec()); // POST-only
     runScript('generate.js', [createPath, '--repo', repo]);
-    assert.ok(!exists(repo, 'src/features/OrderTracking/presentation/queries.ts'));
+    assert.ok(!exists(repo, 'src/features/order-tracking/presentation/queries.ts'));
 
     const appendSpec = getEndpoint({ cache: '8-hours' });
     appendSpec.mode = 'append';
     const result = runScript('generate.js', [writeSpec(makeTmpDir('s'), appendSpec), '--repo', repo]);
     const manifest = readManifest(repo);
-    assert.ok(manifest.created.includes('src/features/OrderTracking/presentation/queries.ts'));
-    const queries = read(repo, 'src/features/OrderTracking/presentation/queries.ts');
+    assert.ok(manifest.created.includes('src/features/order-tracking/presentation/queries.ts'));
+    const queries = read(repo, 'src/features/order-tracking/presentation/queries.ts');
     assert.match(queries, /export const useListOrdersQuery/);
     assert.match(queries, /storeDuration: '8-hours'/);
     assert.match(queries, /\/\/ <create-feature:queries>/);
@@ -327,35 +327,35 @@ test('append GET to a feature that already has queries.ts inserts the hook at th
     appendSpec.mode = 'append';
     const result = runScript('generate.js', [writeSpec(makeTmpDir('s'), appendSpec), '--repo', repo]);
     const manifest = readManifest(repo);
-    assert.ok(manifest.patched.includes('src/features/OrderTracking/presentation/queries.ts'));
-    const queries = read(repo, 'src/features/OrderTracking/presentation/queries.ts');
+    assert.ok(manifest.patched.includes('src/features/order-tracking/presentation/queries.ts'));
+    const queries = read(repo, 'src/features/order-tracking/presentation/queries.ts');
     assert.match(queries, /export const useListOrdersQuery/, 'existing hook stays');
     assert.match(queries, /export const useGetOrderDetailQuery = \(input: GetOrderDetailInput/, 'new hook inserted');
     assert.match(queries, /import type \{ GetOrderDetailInput \} from '\.\.\/domain\/entities\/GetOrderDetailResult';/, 'input import added');
     // idempotent re-run
     const rerun = runScript('generate.js', [writeSpec(makeTmpDir('s'), appendSpec), '--repo', repo]);
-    const queriesAfter = read(repo, 'src/features/OrderTracking/presentation/queries.ts');
+    const queriesAfter = read(repo, 'src/features/order-tracking/presentation/queries.ts');
     assert.equal((queriesAfter.match(/useGetOrderDetailQuery/g) || []).length, (queries.match(/useGetOrderDetailQuery/g) || []).length);
 });
 
 test('remove-feature handles a design-only resume spec (no endpoints) without crashing', () => {
     const repo = makeFixtureRepo();
     // design-only feature: presentation dir + hand-written resume record + manual merger entry
-    write(repo, 'src/features/GlassFlow/presentation/screens/GlassFlowScreen.tsx', 'export default function GlassFlowScreen() { return null; }\n');
-    write(repo, 'src/features/GlassFlow/feature-spec.json', JSON.stringify({
+    write(repo, 'src/features/glass-flow/presentation/screens/GlassFlowScreen.tsx', 'export default function GlassFlowScreen() { return null; }\n');
+    write(repo, 'src/features/glass-flow/feature-spec.json', JSON.stringify({
         feature: 'GlassFlow', skillVersion: '1.5.0',
         design: { fileKey: 'abc', screens: [{ name: 'entry', screenNodeId: '1:2', status: 'verified' }] },
     }, null, 2));
     let merger = read(repo, 'src/core/localization/merger.ts');
     merger = merger
         .replace("import account from '@features/account/presentation/translations';",
-            "import account from '@features/account/presentation/translations';\nimport glassFlow from '@features/GlassFlow/presentation/translations';")
+            "import account from '@features/account/presentation/translations';\nimport glassFlow from '@features/glass-flow/presentation/translations';")
         .replace('    account,', '    account,\n    glassFlow,');
     fs.writeFileSync(path.join(repo, 'src/core/localization/merger.ts'), merger);
 
     const result = runScript('remove-feature.js', ['GlassFlow', '--repo', repo, '--apply']);
     assert.equal(result.status, 0, result.stdout + result.stderr);
-    assert.ok(!exists(repo, 'src/features/GlassFlow'));
+    assert.ok(!exists(repo, 'src/features/glass-flow'));
     const after = read(repo, 'src/core/localization/merger.ts');
     assert.ok(!after.includes('glassFlow'), 'merger entry + import removed');
     assert.match(after, /^    account,$/m, 'unrelated entry stays');

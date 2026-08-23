@@ -19,13 +19,15 @@ const toVerifyProductCodePack = (dto: VerifyProductCodeResponsePackDTO): VerifyP
     organisationName: cleanString(dto.OrganisationName),
     countryOfManufacture: cleanString(dto.CountryOfManufacture),
     customsAuthority: cleanString(dto.CustomsAuthority),
-    customersClearanceDate: formatNumericGregorianDate(dto.CustomersClearanceDate),
+    customersClearanceDate: formatNumericGregorianDate(dto.CustomersClearanceDate ?? undefined),
 });
 
 export const VerifyProductCodeMapper = {
     toDomain(dto: VerifyProductCodeResponseDTO): VerifyProductCodeResult {
         return {
-            // TODO(claude): status derivation — map the response flags to 'valid' | 'invalid' | 'notFound'
+            // TODO(claude): status derivation — map the response flags onto VerifyProductCodeStatus.
+            // Validate against VERIFY_PRODUCT_CODE_STATUS_VALUES imported from
+            // '../../domain/constants/productVerification' — never retype the value list here.
             status: 'valid',
             isValid: dto.IsValid,
             isPackCode: dto.IsPackCode,

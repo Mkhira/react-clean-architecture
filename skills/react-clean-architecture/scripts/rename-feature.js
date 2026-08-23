@@ -20,7 +20,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { featureModel, pascal, camel, snakeUpper, kebab } = require('./generate.js');
+const { featureModel, pascal, camel, snakeUpper, kebab, resolveFeatureDir } = require('./generate.js');
 
 const HELP = `rename-feature.js — rename a skill-generated feature across code, DI, i18n, config, env.
 
@@ -34,14 +34,15 @@ afterwards, then run audit.js against the updated persisted spec.`;
 
 const ENV_FILES = ['.env', '.env.development', '.env.example', '.env.staging', '.env.preprod', '.env.production'];
 
-function nameForms(feature) {
-    return { pascal: pascal(feature), camel: camel(feature), snake: snakeUpper(feature) };
+function nameForms(feature, dir) {
+    return { pascal: pascal(feature), camel: camel(feature), snake: snakeUpper(feature), dir: dir ?? kebab(feature) };
 }
 
 /** [search, replace] pairs — every search string is a full derived identifier. */
 function replacementPairs(oldForms, newForms, spec) {
     const pairs = [
-        [`@features/${oldForms.pascal}/`, `@features/${newForms.pascal}/`],
+        // import paths use the on-disk (kebab) dir, identifiers use PascalCase
+        [`@features/${oldForms.dir}/`, `@features/${newForms.dir}/`],
         [`${oldForms.pascal}Service`, `${newForms.pascal}Service`],       // also covers I<F>Service
         [`${oldForms.pascal}Repository`, `${newForms.pascal}Repository`], // also covers I<F>Repository
         [`${oldForms.pascal}Error`, `${newForms.pascal}Error`],           // also covers create/is<F>Error + <F>Error type
@@ -111,18 +112,21 @@ function main() {
         return 1;
     }
 
-    const oldForms = nameForms(positional[0]);
+    const oldForms = nameForms(positional[0], resolveFeatureDir(repo, positional[0]));
     const newForms = nameForms(positional[1]);
     if (!/^[A-Z][A-Za-z0-9]*$/.test(newForms.pascal)) {
         console.error(`rename-feature.js: "${positional[1]}" does not normalize to a PascalCase identifier.`);
         return 1;
     }
 
-    const oldDir = path.join(repo, 'src', 'features', oldForms.pascal);
-    const newDir = path.join(repo, 'src', 'features', newForms.pascal);
+    // directories are kebab-case (legacy PascalCase ones still resolve)
+    const oldDirName = oldForms.dir;
+    const newDirName = newForms.dir;
+    const oldDir = path.join(repo, 'src', 'features', oldDirName);
+    const newDir = path.join(repo, 'src', 'features', newDirName);
     const specPath = path.join(oldDir, 'feature-spec.json');
     if (!fs.existsSync(oldDir)) {
-        console.error(`rename-feature.js: src/features/${oldForms.pascal} does not exist.`);
+        console.error(`rename-feature.js: src/features/${oldDirName} does not exist.`);
         return 1;
     }
     if (!fs.existsSync(specPath)) {

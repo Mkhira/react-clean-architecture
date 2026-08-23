@@ -76,7 +76,8 @@ function main() {
 
     const created = manifest.created ?? [];
     const patched = manifest.patched ?? [];
-    const featureRoot = path.join(repo, 'src', 'features', manifest.feature ?? '');
+    // featureDir since v1.14.0 (kebab); older manifests only carry the identifier
+    const featureRoot = path.join(repo, 'src', 'features', manifest.featureDir ?? manifest.feature ?? '');
     const report = { mode: apply ? 'apply' : 'dry-run', feature: manifest.feature, deleted: [], restored: [], problems: [] };
 
     for (const relative of created) {

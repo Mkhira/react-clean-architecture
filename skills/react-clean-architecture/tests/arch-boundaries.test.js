@@ -45,7 +45,7 @@ test('importSpecifiers: named, type-only, multi-line, side-effect, and export-fr
 
 test('domain importing a data DTO is flagged (the original P0 violation)', () => {
     const repo = makeFixtureRepo();
-    writeFeatureFile(repo, 'src/features/Dirty/domain/IRepositories/IDirtyRepository.ts',
+    writeFeatureFile(repo, 'src/features/dirty/domain/IRepositories/IDirtyRepository.ts',
         `import type { XRequestDTO } from '../../data/dtos/XDTO';\nexport interface IDirtyService { x(p: XRequestDTO): Promise<void>; }\n`);
     const problems = archBoundaryProblems(repo, 'Dirty');
     assert.equal(problems.length, 1);
@@ -54,7 +54,7 @@ test('domain importing a data DTO is flagged (the original P0 violation)', () =>
 
 test('domain importing frameworks or @core is flagged; @domain/@shared are allowed', () => {
     const repo = makeFixtureRepo();
-    writeFeatureFile(repo, 'src/features/Dirty/domain/use-cases/XUseCase.ts', [
+    writeFeatureFile(repo, 'src/features/dirty/domain/use-cases/XUseCase.ts', [
         `import { useEffect } from 'react';`,
         `import axios from 'axios';`,
         `import { useQuery } from '@tanstack/react-query';`,
@@ -72,7 +72,7 @@ test('domain importing frameworks or @core is flagged; @domain/@shared are allow
 
 test('data importing presentation is flagged; data importing domain is fine', () => {
     const repo = makeFixtureRepo();
-    writeFeatureFile(repo, 'src/features/Dirty/data/services/DirtyService.ts', [
+    writeFeatureFile(repo, 'src/features/dirty/data/services/DirtyService.ts', [
         `import { helper } from '../../presentation/utils/helper';`,
         `import type { X } from '../../domain/entities/X';`,
         `import type { IHttpClient } from '@core/http/IHttpClient';`,
@@ -97,7 +97,7 @@ test('a generated POST feature (body + device + status) has ZERO boundary proble
     assert.equal(result.status, 0);
     assert.deepEqual(archBoundaryProblems(repo, 'OrderTracking'), []);
     // and the domain service interface takes the domain input, not the DTO
-    const iface = read(repo, 'src/features/OrderTracking/data/IServices/IOrderTrackingService.ts');
+    const iface = read(repo, 'src/features/order-tracking/data/IServices/IOrderTrackingService.ts');
     assert.match(iface, /input: TrackOrderInput/);
     assert.ok(!iface.includes('RequestDTO'), 'domain interface must not mention the transport DTO');
 });
@@ -114,7 +114,7 @@ test('audit reports arch-boundaries as a check row', () => {
 
 test('generated use case classifies 401/403 as AUTH_ERROR and ECONNABORTED as TIMEOUT', () => {
     const { repo } = generateInto(baseSpec());
-    const useCase = read(repo, 'src/features/OrderTracking/domain/use-cases/TrackOrderUseCase.ts');
+    const useCase = read(repo, 'src/features/order-tracking/domain/use-cases/TrackOrderUseCase.ts');
     assert.match(useCase, /httpStatus === 401 \|\| httpStatus === 403/);
     assert.match(useCase, /createOrderTrackingError\('AUTH_ERROR'/);
     assert.match(useCase, /'ECONNABORTED' \|\| transport\?\.code === 'ETIMEDOUT'/);
@@ -122,10 +122,10 @@ test('generated use case classifies 401/403 as AUTH_ERROR and ECONNABORTED as TI
     // the envelope-description NETWORK_ERROR fallback survives as the last resort
     assert.match(useCase, /description \|\| 'trackOrder failed'/);
 
-    const errors = read(repo, 'src/features/OrderTracking/domain/errors/OrderTrackingError.ts');
+    const errors = read(repo, 'src/features/order-tracking/domain/errors/OrderTrackingError.ts');
     assert.match(errors, /'AUTH_ERROR',\n    'TIMEOUT',/);
 
-    const useCaseTest = read(repo, 'src/features/OrderTracking/test/TrackOrderUseCase.test.ts');
+    const useCaseTest = read(repo, 'src/features/order-tracking/test/TrackOrderUseCase.test.ts');
     assert.match(useCaseTest, /classifies a 401 rejection as AUTH_ERROR/);
     assert.match(useCaseTest, /classifies an aborted request as TIMEOUT/);
 });

@@ -1,5 +1,6 @@
 import { IUseCase } from '@domain/shared/IUseCase';
 import { Result } from '@shared/types/Result';
+import type { ILogger } from '@core/logging/ILogger';
 import type { IProductVerificationRepository } from '../IRepositories/IProductVerificationRepository';
 import type { VerifyProductCodeResult, VerifyProductCodeInput } from '../entities/VerifyProductCodeResult';
 import { createProductVerificationError, isProductVerificationError, type ProductVerificationError } from '../errors/ProductVerificationError';
@@ -9,7 +10,10 @@ import { createProductVerificationError, isProductVerificationError, type Produc
  * As a consumer I scan a product tax-stamp QR code so I can check the product is genuine. The code must be exactly 16 characters after trimming; otherwise show a validation error without calling the API.
  */
 export class VerifyProductCodeUseCase implements IUseCase<VerifyProductCodeInput, Result<VerifyProductCodeResult, ProductVerificationError>> {
-    constructor(private readonly repository: IProductVerificationRepository) {}
+    constructor(
+        private readonly repository: IProductVerificationRepository,
+        private readonly logger: ILogger
+    ) {}
 
     async execute(input: VerifyProductCodeInput): Promise<Result<VerifyProductCodeResult, ProductVerificationError>> {
         // TODO(claude): implement business rules:
@@ -18,6 +22,8 @@ export class VerifyProductCodeUseCase implements IUseCase<VerifyProductCodeInput
             const result = await this.repository.verifyProductCode(input);
             return Result.ok(result);
         } catch (error) {
+            // never swallow a failure silently — reviewers require the log
+            this.logger.exception('verifyProductCode failed', error);
             if (isProductVerificationError(error)) {
                 return Result.err(error);
             }

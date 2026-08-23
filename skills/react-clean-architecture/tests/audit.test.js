@@ -34,7 +34,7 @@ test('happy path: a generated+registered feature passes every static check', () 
 
 test('structure: a deleted generated file fails the audit and is named', () => {
     const { result } = auditedFixture({
-        mutate: (repo) => fs.rmSync(path.join(repo, 'src/features/OrderTracking/data/mappers/TrackOrderMapper.ts')),
+        mutate: (repo) => fs.rmSync(path.join(repo, 'src/features/order-tracking/data/mappers/TrackOrderMapper.ts')),
     });
     assert.equal(result.status, 1);
     assert.match(result.stdout, /FAIL structure\s+missing: .*TrackOrderMapper\.ts/);
@@ -77,7 +77,7 @@ test('env-files: a real-looking value in .env.example fails; a missing key fails
 
 test('secret-hygiene: a raw secret pasted into generated code fails the audit', () => {
     const { result } = auditedFixture({
-        mutate: (repo) => write(repo, 'src/features/OrderTracking/presentation/utils/debug.ts',
+        mutate: (repo) => write(repo, 'src/features/order-tracking/presentation/utils/debug.ts',
             "export const KEY = 'fixture-api-key-123';\n"),
     });
     assert.equal(result.status, 1);
@@ -109,10 +109,10 @@ test('status-derivation: an unfilled status TODO blocks the audit until hand-wri
     assert.match(blocked.stdout, /FAIL status-derivation/);
 
     // simulate the Claude hand-fill step, exactly as SKILL.md prescribes
-    const mapperPath = path.join(repo, 'src/features/OrderTracking/data/mappers/TrackOrderMapper.ts');
+    const mapperPath = path.join(repo, 'src/features/order-tracking/data/mappers/TrackOrderMapper.ts');
     const mapper = fs.readFileSync(mapperPath, 'utf8');
     fs.writeFileSync(mapperPath, mapper.replace(
-        /\s*\/\/ TODO\(claude\): status derivation[^\n]*\n(\s*)status: 'ok',/,
+        /\s*\/\/ TODO\(claude\): status derivation[\s\S]*?\n(\s*)status: 'ok',/,
         "\n$1status: dto.OrderStatus === 'IN_TRANSIT' ? 'ok' : 'failed',"
     ));
     const unblocked = runScript('audit.js', [specPath, '--repo', repo, ...AUDIT_FLAGS]);
@@ -121,7 +121,7 @@ test('status-derivation: an unfilled status TODO blocks the audit until hand-wri
 
 test('reuse-first: re-implementing a shared util is flagged; mapper-local cleanString is exempt', () => {
     const { result, repo, specPath } = auditedFixture({
-        mutate: (repo) => write(repo, 'src/features/OrderTracking/presentation/utils/dates.ts',
+        mutate: (repo) => write(repo, 'src/features/order-tracking/presentation/utils/dates.ts',
             'export const formatNumericGregorianDate = (value: string) => value;\n'),
     });
     assert.equal(result.status, 0, 'reuse-first is a WARN, not a FAIL');
@@ -133,18 +133,18 @@ test('reuse-first: re-implementing a shared util is flagged; mapper-local cleanS
 test('--persist-spec: written only on PASS, and sanitized (no secrets, env references instead)', () => {
     // failing audit → no spec persisted
     const failing = auditedFixture({
-        mutate: (repo) => fs.rmSync(path.join(repo, 'src/features/OrderTracking/domain/errors/OrderTrackingError.ts')),
+        mutate: (repo) => fs.rmSync(path.join(repo, 'src/features/order-tracking/domain/errors/OrderTrackingError.ts')),
     });
     const failResult = runScript('audit.js', [failing.specPath, '--repo', failing.repo, ...AUDIT_FLAGS, '--persist-spec']);
     assert.equal(failResult.status, 1);
-    assert.ok(!exists(failing.repo, 'src/features/OrderTracking/feature-spec.json'));
+    assert.ok(!exists(failing.repo, 'src/features/order-tracking/feature-spec.json'));
     assert.match(failResult.stdout, /Spec NOT persisted/);
 
     // passing audit → sanitized spec persisted
     const passing = auditedFixture();
     const passResult = runScript('audit.js', [passing.specPath, '--repo', passing.repo, ...AUDIT_FLAGS, '--persist-spec']);
     assert.equal(passResult.status, 0);
-    const persisted = read(passing.repo, 'src/features/OrderTracking/feature-spec.json');
+    const persisted = read(passing.repo, 'src/features/order-tracking/feature-spec.json');
     assert.ok(!persisted.includes('fixture-api-key-123'), 'secret header value must be stripped');
     assert.ok(!persisted.includes('https://partner.example.test/api'), 'devValue must be stripped');
     assert.match(persisted, /<env:EXPO_PUBLIC_ORDER_TRACKING_API_KEY>/);
@@ -153,7 +153,7 @@ test('--persist-spec: written only on PASS, and sanitized (no secrets, env refer
     // the persisted spec joins the manifest's created list so rollback removes
     // it too (otherwise an aborted run leaves the feature dir behind)
     const manifest = JSON.parse(read(passing.repo, '.claude-skill-manifest.json'));
-    assert.ok(manifest.created.includes('src/features/OrderTracking/feature-spec.json'));
+    assert.ok(manifest.created.includes('src/features/order-tracking/feature-spec.json'));
     assert.match(persisted, /"value": "<session>"/);
     // provenance and structure survive sanitization (append mode depends on them)
     assert.match(persisted, /"OrderNumber": "input"/);
@@ -197,7 +197,7 @@ test('append + --persist-spec MERGES into the existing persisted spec (endpoints
     result = runScript('audit.js', [appendPath, '--repo', repo, ...AUDIT_FLAGS, '--persist-spec']);
     assert.equal(result.status, 0, result.stdout);
 
-    const persisted = JSON.parse(read(repo, 'src/features/OrderTracking/feature-spec.json'));
+    const persisted = JSON.parse(read(repo, 'src/features/order-tracking/feature-spec.json'));
     assert.equal(persisted.mode, 'create', 'persisted spec stays the full feature record');
     assert.deepEqual(persisted.endpoints.map((e) => e.action).sort(), ['cancelOrder', 'trackOrder']);
     assert.equal(persisted.design.fileKey, 'abc123', 'design block survives the append persist');

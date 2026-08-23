@@ -23,7 +23,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { featureModel, pascal, queryKeyName } = require('./generate.js');
+const { featureModel, pascal, queryKeyName, resolveFeatureDir } = require('./generate.js');
 
 const HELP = `remove-feature.js — remove a skill-generated feature everywhere it was wired.
 
@@ -109,11 +109,12 @@ function main() {
     const feature = pascal(featureArg);
     report.mode = apply ? 'apply' : 'dry-run';
     report.feature = feature;
-    const featureDir = path.join(repo, 'src', 'features', feature);
+    const featureDirName = resolveFeatureDir(repo, featureArg);
+    const featureDir = path.join(repo, 'src', 'features', featureDirName);
     const specPath = path.join(featureDir, 'feature-spec.json');
 
     if (!fs.existsSync(featureDir)) {
-        console.error(`remove-feature.js: src/features/${feature} does not exist.`);
+        console.error(`remove-feature.js: src/features/${featureDirName} does not exist.`);
         return 1;
     }
     if (!fs.existsSync(specPath)) {
@@ -129,6 +130,7 @@ function main() {
         return 1;
     }
     const f = featureModel(spec);
+    f.featureDir = resolveFeatureDir(repo, spec.feature);
     const tokenKeys = [`${f.feature}Service`, `${f.feature}Repository`, ...f.endpoints.map((e) => e.useCase)];
 
     // 1. feature directory
@@ -146,7 +148,7 @@ function main() {
     const tokensPath = 'src/core/di/tokens.ts';
     let tokens = fs.readFileSync(path.join(repo, tokensPath), 'utf8');
     let plan = planLineRemovals(tokens, (line) => {
-        if (line.includes(`@features/${feature}/`)) {
+        if (line.includes(`@features/${featureDirName}/`)) {
             if (!/^import /.test(line)) {
                 report.problems.push(`${tokensPath}: "${line.trim().slice(0, 60)}" references the feature but is not a single-line import — unwire that import by hand`);
                 return false;
@@ -160,7 +162,7 @@ function main() {
     // 3. container.ts — imports + registration blocks
     const containerPath = 'src/core/di/container.ts';
     let container = fs.readFileSync(path.join(repo, containerPath), 'utf8');
-    plan = planLineRemovals(container, (line) => line.includes(`@features/${feature}/`) && /^import /.test(line), 'container.ts');
+    plan = planLineRemovals(container, (line) => line.includes(`@features/${featureDirName}/`) && /^import /.test(line), 'container.ts');
     const blocks = removeRegistrationBlocks(plan.content, tokenKeys, feature);
     applyEdit(repo, containerPath, blocks.content, apply);
 
@@ -168,7 +170,7 @@ function main() {
     const i18nPath = 'src/core/localization/merger.ts';
     let i18n = fs.readFileSync(path.join(repo, i18nPath), 'utf8');
     plan = planLineRemovals(i18n, (line) =>
-        line.includes(`@features/${feature}/presentation/translations`) ||
+        line.includes(`@features/${featureDirName}/presentation/translations`) ||
         new RegExp(`^\\s+${f.featureCamel},\\s*$`).test(line), 'merger.ts');
     applyEdit(repo, i18nPath, plan.content, apply);
 
@@ -226,7 +228,7 @@ function main() {
             for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
                 const full = path.join(dir, entry.name);
                 if (entry.isDirectory()) scan(full);
-                else if (/\.tsx?$/.test(entry.name) && fs.readFileSync(full, 'utf8').includes(`@features/${feature}/`)) {
+                else if (/\.tsx?$/.test(entry.name) && fs.readFileSync(full, 'utf8').includes(`@features/${featureDirName}/`)) {
                     routeHits.push(path.relative(repo, full));
                 }
             }

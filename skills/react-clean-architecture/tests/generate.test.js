@@ -50,7 +50,7 @@ test('create mode: full tree, anchors, and manifest; never overwrites on re-run'
     assert.ok(manifest.created.length >= 15);
     assert.equal(manifest.skipped.length, 0);
 
-    const base = 'src/features/OrderTracking';
+    const base = 'src/features/order-tracking';
     for (const file of [
         `${base}/data/endpoints/endpoints.ts`,
         `${base}/data/services/OrderTrackingService.ts`,
@@ -78,7 +78,7 @@ test('create mode: full tree, anchors, and manifest; never overwrites on re-run'
 
 test('external service: shared transport helpers, session header excluded, secrets never inlined', () => {
     const { repo } = generateInto(baseSpec());
-    const service = read(repo, 'src/features/OrderTracking/data/services/OrderTrackingService.ts');
+    const service = read(repo, 'src/features/order-tracking/data/services/OrderTrackingService.ts');
     assert.match(service, /private async requestExternal\(/);
     assert.match(service, /private async parseExternalJson</);
     assert.match(service, /AbortController/);
@@ -106,15 +106,15 @@ test('app GET with query + path params: axios params config and function endpoin
         dateFields: ['At'],
     };
     const { repo } = generateInto(spec);
-    const endpoints = read(repo, 'src/features/OrderTracking/data/endpoints/endpoints.ts');
+    const endpoints = read(repo, 'src/features/order-tracking/data/endpoints/endpoints.ts');
     assert.match(endpoints, /GET_ORDER_EVENTS: \(orderId: string\) => `\/v1\/orders\/\$\{orderId\}\/events`,/);
-    const service = read(repo, 'src/features/OrderTracking/data/services/OrderTrackingService.ts');
+    const service = read(repo, 'src/features/order-tracking/data/services/OrderTrackingService.ts');
     assert.match(service, /this\.httpClient\.get<GetOrderEventsResult>\(ORDER_TRACKING_ENDPOINTS\.GET_ORDER_EVENTS\(orderId\), \{ mapper: GetOrderEventsMapper\.toDomain, params: query \}\)/);
     assert.ok(!service.includes('configService'), 'app-only service must not depend on IConfigService');
     // array response → no RequestDTO anywhere
-    const dto = read(repo, 'src/features/OrderTracking/data/dtos/GetOrderEventsDTO.ts');
+    const dto = read(repo, 'src/features/order-tracking/data/dtos/GetOrderEventsDTO.ts');
     assert.ok(!dto.includes('RequestDTO'));
-    assert.match(read(repo, 'src/features/OrderTracking/domain/entities/GetOrderEventsResult.ts'), /export type GetOrderEventsResult = GetOrderEventsItem\[\];/);
+    assert.match(read(repo, 'src/features/order-tracking/domain/entities/GetOrderEventsResult.ts'), /export type GetOrderEventsResult = GetOrderEventsItem\[\];/);
 });
 
 test('response "none": Result<void>, no ResponseDTO, no toDomain', () => {
@@ -122,11 +122,11 @@ test('response "none": Result<void>, no ResponseDTO, no toDomain', () => {
     spec.endpoints[0].responseSample = null;
     spec.endpoints[0].dateFields = [];
     const { repo } = generateInto(spec);
-    const useCase = read(repo, 'src/features/OrderTracking/domain/use-cases/TrackOrderUseCase.ts');
+    const useCase = read(repo, 'src/features/order-tracking/domain/use-cases/TrackOrderUseCase.ts');
     assert.match(useCase, /Result<void, OrderTrackingError>/);
-    const dto = read(repo, 'src/features/OrderTracking/data/dtos/TrackOrderDTO.ts');
+    const dto = read(repo, 'src/features/order-tracking/data/dtos/TrackOrderDTO.ts');
     assert.ok(!dto.includes('ResponseDTO'));
-    const mapper = read(repo, 'src/features/OrderTracking/data/mappers/TrackOrderMapper.ts');
+    const mapper = read(repo, 'src/features/order-tracking/data/mappers/TrackOrderMapper.ts');
     assert.ok(!mapper.includes('toDomain'));
 });
 
@@ -134,8 +134,12 @@ test('statusEnum: union type emitted, derivation left as an audited TODO', () =>
     const spec = baseSpec();
     spec.endpoints[0].statusEnum = { field: 'status', values: ['delivered', 'lost'] };
     const { repo } = generateInto(spec);
-    assert.match(read(repo, 'src/features/OrderTracking/domain/entities/TrackOrderResult.ts'), /export type TrackOrderStatus = 'delivered' \| 'lost';/);
-    assert.match(read(repo, 'src/features/OrderTracking/data/mappers/TrackOrderMapper.ts'), /TODO\(claude\): status derivation/);
+    // the union now derives from the shared domain/constants array (v1.14.0) —
+    // the entity imports and re-exports it instead of retyping the literals
+    assert.match(read(repo, 'src/features/order-tracking/domain/constants/orderTracking.ts'), /export const TRACK_ORDER_STATUS_VALUES = \['delivered', 'lost'\] as const;/);
+    assert.match(read(repo, 'src/features/order-tracking/domain/entities/TrackOrderResult.ts'), /import type \{ TrackOrderStatus \} from '\.\.\/constants\/orderTracking';/);
+    assert.match(read(repo, 'src/features/order-tracking/domain/entities/TrackOrderResult.ts'), /export type \{ TrackOrderStatus \};/);
+    assert.match(read(repo, 'src/features/order-tracking/data/mappers/TrackOrderMapper.ts'), /TODO\(claude\): status derivation/);
 });
 
 test('device provenance: SERVICE gains getDeviceMetadata + DeviceMetadata DTO (v1.8.0: the service owns toDTO)', () => {
@@ -143,15 +147,15 @@ test('device provenance: SERVICE gains getDeviceMetadata + DeviceMetadata DTO (v
     spec.endpoints[0].requestSample.DeviceId = 'd1';
     spec.endpoints[0].requestFieldSources.DeviceId = 'device';
     const { repo } = generateInto(spec);
-    const service = read(repo, 'src/features/OrderTracking/data/services/OrderTrackingService.ts');
+    const service = read(repo, 'src/features/order-tracking/data/services/OrderTrackingService.ts');
     assert.match(service, /getDeviceMetadata/);
     assert.match(service, /const payload = TrackOrderMapper\.toDTO\(input, device\);/);
     // the repository is a pure passthrough now — no device fetch, no DTO conversion
-    const repository = read(repo, 'src/features/OrderTracking/data/repositories/OrderTrackingRepository.ts');
+    const repository = read(repo, 'src/features/order-tracking/data/repositories/OrderTrackingRepository.ts');
     assert.ok(!repository.includes('getDeviceMetadata'), 'repository must not fetch device metadata');
     assert.ok(!repository.includes('toDTO'), 'repository must not convert to the transport DTO');
-    assert.match(read(repo, 'src/features/OrderTracking/data/dtos/TrackOrderDTO.ts'), /export type DeviceMetadata/);
-    assert.match(read(repo, 'src/features/OrderTracking/data/mappers/TrackOrderMapper.ts'), /DeviceId: device\.id,/);
+    assert.match(read(repo, 'src/features/order-tracking/data/dtos/TrackOrderDTO.ts'), /export type DeviceMetadata/);
+    assert.match(read(repo, 'src/features/order-tracking/data/mappers/TrackOrderMapper.ts'), /DeviceId: device\.id,/);
 });
 
 test('spec validation: missing required fields exits non-zero with a message', () => {
@@ -182,13 +186,13 @@ test('append mode: inserts at anchors with imports, idempotent on re-run', () =>
     assert.ok(first.patched.some((file) => file.endsWith('endpoints.ts')));
     assert.equal(first.needsManual.length, 0);
 
-    const service = read(repo, 'src/features/OrderTracking/data/services/OrderTrackingService.ts');
+    const service = read(repo, 'src/features/order-tracking/data/services/OrderTrackingService.ts');
     assert.match(service, /async cancelOrder\(/);
     // v1.8.0: the service receives the domain input and converts via the mapper
     assert.match(service, /import type \{ CancelOrderInput \} from '\.\.\/\.\.\/domain\/entities\/CancelOrderResult';/);
     assert.match(service, /import \{ CancelOrderMapper \} from '\.\.\/mappers\/CancelOrderMapper';/);
     assert.ok(!service.includes('CancelOrderRequestDTO'), 'RequestDTO must stay inside the mapper');
-    const iface = read(repo, 'src/features/OrderTracking/domain/IRepositories/IOrderTrackingRepository.ts');
+    const iface = read(repo, 'src/features/order-tracking/domain/IRepositories/IOrderTrackingRepository.ts');
     assert.match(iface, /cancelOrder\(input: CancelOrderInput\): Promise<void>;/);
 
     // idempotent: second append changes nothing
@@ -197,7 +201,7 @@ test('append mode: inserts at anchors with imports, idempotent on re-run', () =>
     const second = readManifest(repo);
     assert.equal(second.created.length, 0);
     assert.equal(second.patched.length, 0);
-    assert.equal(read(repo, 'src/features/OrderTracking/data/services/OrderTrackingService.ts'), before);
+    assert.equal(read(repo, 'src/features/order-tracking/data/services/OrderTrackingService.ts'), before);
 });
 
 test('append to a pre-skill feature: NO files created, NEEDS_MANUAL fallback', () => {

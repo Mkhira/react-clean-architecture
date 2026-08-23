@@ -38,7 +38,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { featureModel, buildFilePlan, testsDirName, pascal, SKILL_VERSION } = require('./generate.js');
+const { featureModel, buildFilePlan, testsDirName, pascal, SKILL_VERSION, resolveFeatureDir } = require('./generate.js');
 
 const HELP = `migrate-feature.js — regenerate a feature's machine-owned files with the current templates.
 
@@ -52,11 +52,34 @@ Needs src/features/<FeatureName>/feature-spec.json. Hand-written files
 hand-added error codes are merged into the regenerated errors file.
 Finish with audit.js to re-verify the feature.`;
 
-const DEFAULT_ERROR_CODES = new Set(['NETWORK_ERROR', 'HTTP_ERROR', 'PARSE_ERROR', 'VALIDATION_ERROR']);
+// Codes any older template may have emitted by default — never "hand-added".
+const DEFAULT_ERROR_CODES = new Set(['NETWORK_ERROR', 'HTTP_ERROR', 'PARSE_ERROR', 'VALIDATION_ERROR', 'AUTH_ERROR', 'TIMEOUT']);
+// Since v1.14.0 a feature error IS an AppError, so only these codes can be
+// carried over. A hand-added code outside this set cannot compile against
+// AppError — it is dropped and reported, so the owner decides whether it
+// belongs in AppError itself (src/shared/types/errors.ts) or maps onto one of
+// these. Silently keeping it would emit a file that fails tsc.
+const APP_ERROR_CODES_FALLBACK = ['NETWORK_ERROR', 'AUTH_ERROR', 'TIMEOUT', 'VALIDATION_ERROR'];
+
+/**
+ * AppError's code union, read from the repo so this stays correct when the
+ * owner adds a code to src/shared/types/errors.ts (the sanctioned way to
+ * introduce one). Falls back to the known four if the file can't be parsed.
+ */
+function appErrorCodes(repo) {
+    try {
+        const source = fs.readFileSync(path.join(repo, 'src', 'shared', 'types', 'errors.ts'), 'utf8');
+        const match = source.match(/export type INFRA_ERROR_CODES\s*=([^;]+);/);
+        const codes = match ? [...match[1].matchAll(/'([A-Z0-9_]+)'/g)].map((m) => m[1]) : [];
+        return new Set(codes.length ? codes : APP_ERROR_CODES_FALLBACK);
+    } catch {
+        return new Set(APP_ERROR_CODES_FALLBACK);
+    }
+}
 
 /** Which planned files the migration owns. Paths are repo-relative. */
 function isMachineOwned(relative, f, includeTypes) {
-    const inFeature = (sub) => relative.includes(`${path.sep}${f.feature}${path.sep}${sub}`);
+    const inFeature = (sub) => relative.includes(`${path.sep}${f.featureDir}${path.sep}${sub}`);
     if (inFeature(path.join('data', 'endpoints') + path.sep)) return true;
     if (inFeature(path.join('data', 'services') + path.sep)) return true;
     if (inFeature(path.join('data', 'repositories') + path.sep)) return true;
@@ -111,7 +134,7 @@ function tsFilesUnder(dir) {
 }
 
 function relocateOldLayout(repo, f, apply, report) {
-    const base = path.join(repo, 'src', 'features', f.feature);
+    const base = path.join(repo, 'src', 'features', f.featureDir);
     // repo-relative paths a dry run WOULD create — the plan loop must not
     // report them as missing when --apply hasn't moved them yet
     const pendingTargets = new Set();
@@ -183,7 +206,9 @@ function main() {
     }
 
     const feature = pascal(featureArg);
-    const specPath = path.join(repo, 'src', 'features', feature, 'feature-spec.json');
+    // dirs are kebab-case since v1.14.0; legacy PascalCase dirs still resolve
+    const featureDirName = resolveFeatureDir(repo, featureArg);
+    const specPath = path.join(repo, 'src', 'features', featureDirName, 'feature-spec.json');
     if (!fs.existsSync(specPath)) {
         console.error(`migrate-feature.js: ${path.relative(repo, specPath)} not found — only features with a persisted spec can migrate (pre-skill features are out of scope).`);
         return 1;
@@ -198,7 +223,8 @@ function main() {
 
     const fromVersion = spec.skillVersion ?? '1.0.0 (pre-stamping)';
     const f = featureModel(spec);
-    const { files, perEndpoint } = buildFilePlan(spec, f, testsDirName(repo, feature));
+    f.featureDir = featureDirName;
+    const { files, perEndpoint } = buildFilePlan(spec, f, testsDirName(repo, f.featureDir));
     const planned = new Map([...files, ...perEndpoint]);
 
     const report = {
@@ -227,7 +253,16 @@ function main() {
         const existing = fs.existsSync(absolute) ? fs.readFileSync(absolute, 'utf8') : null;
 
         if (relative.includes(`${path.sep}errors${path.sep}`) && existing) {
-            const extraCodes = [...new Set(extractErrorCodes(existing))].filter((code) => !DEFAULT_ERROR_CODES.has(code));
+            const handAdded = [...new Set(extractErrorCodes(existing))].filter((code) => !DEFAULT_ERROR_CODES.has(code));
+            const allowed = appErrorCodes(repo);
+            const extraCodes = handAdded.filter((code) => allowed.has(code));
+            const dropped = handAdded.filter((code) => !allowed.has(code));
+            if (dropped.length) {
+                report.problems.push(
+                    `${relative}: hand-added error code(s) ${dropped.join(', ')} are not AppError codes and were DROPPED — ` +
+                    `map each onto ${[...allowed].join(' / ')} at its throw sites, or add it to AppError in src/shared/types/errors.ts and re-run`
+                );
+            }
             nextContent = mergeErrorCodes(nextContent, extraCodes);
             report.mergedErrorCodes.push(...extraCodes);
         }

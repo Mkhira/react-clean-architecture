@@ -114,7 +114,7 @@ test('two features with substring camel names coexist and unwire independently',
     assert.match(merger, /^    orderTracking,$/m);
 
     // removing the SHORT one must not touch the LONG one anywhere
-    fs.copyFileSync(orderPath, path.join(repo, 'src/features/Order/feature-spec.json'));
+    fs.copyFileSync(orderPath, path.join(repo, 'src/features/order/feature-spec.json'));
     const result = runScript('remove-feature.js', ['Order', '--repo', repo, '--apply']);
     assert.equal(result.status, 0, result.stdout + result.stderr);
     const mergerAfter = read(repo, 'src/core/localization/merger.ts');
@@ -138,7 +138,7 @@ test('append re-running the SAME action is a full no-op (all files skipped, noth
     const manifest = readManifest(repo);
     assert.equal(manifest.created.length, 0);
     assert.equal(manifest.needsManual.length, 0);
-    const service = read(repo, 'src/features/OrderTracking/data/services/OrderTrackingService.ts');
+    const service = read(repo, 'src/features/order-tracking/data/services/OrderTrackingService.ts');
     assert.equal((service.match(/async listOrders\(/g) || []).length, 1, 'no duplicated method');
 });
 
@@ -148,15 +148,15 @@ test('create → register → rename → remove chain leaves the repo fully clea
     const specPath = writeSpec(makeTmpDir('s'), spec);
     runScript('generate.js', [specPath, '--repo', repo]);
     runScript('register-di.js', [specPath, '--repo', repo]);
-    fs.copyFileSync(specPath, path.join(repo, 'src/features/OrderTracking/feature-spec.json'));
+    fs.copyFileSync(specPath, path.join(repo, 'src/features/order-tracking/feature-spec.json'));
 
     let result = runScript('rename-feature.js', ['OrderTracking', 'ShipmentTrace', '--repo', repo, '--apply']);
     assert.equal(result.status, 0, result.stdout + result.stderr);
     result = runScript('remove-feature.js', ['ShipmentTrace', '--repo', repo, '--apply']);
     assert.equal(result.status, 0, result.stdout + result.stderr);
 
-    assert.ok(!exists(repo, 'src/features/OrderTracking'));
-    assert.ok(!exists(repo, 'src/features/ShipmentTrace'));
+    assert.ok(!exists(repo, 'src/features/order-tracking'));
+    assert.ok(!exists(repo, 'src/features/shipment-trace'));
     for (const file of ['src/core/di/tokens.ts', 'src/core/di/container.ts', 'src/core/localization/merger.ts', 'src/data/services/keys.ts']) {
         const content = read(repo, file);
         assert.ok(!/OrderTracking|ORDER_TRACKING|orderTracking|ShipmentTrace|SHIPMENT_TRACE|shipmentTrace/.test(content), `${file} still mentions the feature after the chain`);
@@ -178,10 +178,10 @@ test('GET with BOTH path and query params: one merged input type feeds the hook'
     });
     const result = runScript('generate.js', [writeSpec(makeTmpDir('s'), spec), '--repo', repo]);
     assert.equal(result.status, 0, result.stderr);
-    const queries = read(repo, 'src/features/OrderTracking/presentation/queries.ts');
+    const queries = read(repo, 'src/features/order-tracking/presentation/queries.ts');
     assert.match(queries, /useListOrdersQuery = \(input: ListOrdersInput, options\?: \{ enabled\?: boolean \}\)/);
     assert.match(queries, /enabled: options\?\.enabled \?\? true, storeDuration: '24-hours'/);
-    const entity = read(repo, 'src/features/OrderTracking/domain/entities/ListOrdersResult.ts');
+    const entity = read(repo, 'src/features/order-tracking/domain/entities/ListOrdersResult.ts');
     assert.match(entity, /id: string;/);
     assert.match(entity, /includeHistory: boolean;/);
 });

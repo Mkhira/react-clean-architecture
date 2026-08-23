@@ -27,7 +27,7 @@ function navSpec(cardOverrides = {}) {
 /** Fixture repo + the generated starter screen (full mode: generate.js made it). */
 function repoWithStarter() {
     const repo = makeNavFixtureRepo();
-    write(repo, 'src/features/OrderTracking/presentation/screens/OrderTrackingScreen.tsx',
+    write(repo, 'src/features/order-tracking/presentation/screens/OrderTrackingScreen.tsx',
         'export default function OrderTrackingScreen() { return null; }\n');
     return repo;
 }
@@ -57,7 +57,7 @@ test('happy path: every DESIGN.md §5 registration lands in one run', () => {
         /orderTracking: \(\): AppRoute => \(\{ key: 'serviceFlow\.orderTracking' \}\),/);
 
     const routeFile = read(repo, 'app/service-flow/order-tracking.tsx');
-    assert.match(routeFile, /import OrderTrackingScreen from '@features\/OrderTracking\/presentation\/screens\/OrderTrackingScreen';/);
+    assert.match(routeFile, /import OrderTrackingScreen from '@features\/order-tracking\/presentation\/screens\/OrderTrackingScreen';/);
     assert.match(routeFile, /<OrderTrackingScreen \/>/);
 
     const pages = read(repo, 'src/presentation/service-flow/screens/pages/index.ts');
@@ -82,7 +82,7 @@ test('happy path: every DESIGN.md §5 registration lands in one run', () => {
     }
     assert.ok(summary.needsClaude.some((line) => line.includes('en.json + ar.json')));
 
-    const featureRoutes = read(repo, 'src/features/OrderTracking/presentation/routes.ts');
+    const featureRoutes = read(repo, 'src/features/order-tracking/presentation/routes.ts');
     assert.match(featureRoutes, /export const ORDER_TRACKING_SERVICE_ID = 'order-tracking';/);
     assert.match(featureRoutes, /export const ORDER_TRACKING_PAGE_KEY = 'orderTracking';/);
 
@@ -115,15 +115,15 @@ test('design-only: manifest created, placeholder flow host generated and flagged
     const summary = JSON.parse(result.stdout);
     assert.equal(result.status, 0, result.stdout + result.stderr);
 
-    const placeholder = read(repo, 'src/features/OrderTracking/presentation/screens/OrderTrackingScreen.tsx');
+    const placeholder = read(repo, 'src/features/order-tracking/presentation/screens/OrderTrackingScreen.tsx');
     assert.match(placeholder, /TODO\(claude\): replace with the Figma build/);
     assert.ok(summary.needsClaude.some((line) => line.includes('placeholder flow host')));
 
     const manifest = readManifest(repo);
     assert.equal(manifest.mode, 'design');
     assert.ok(manifest.created.includes('app/service-flow/order-tracking.tsx'));
-    assert.ok(manifest.created.includes('src/features/OrderTracking/presentation/screens/OrderTrackingScreen.tsx'));
-    assert.ok(manifest.created.includes('src/features/OrderTracking/presentation/routes.ts'));
+    assert.ok(manifest.created.includes('src/features/order-tracking/presentation/screens/OrderTrackingScreen.tsx'));
+    assert.ok(manifest.created.includes('src/features/order-tracking/presentation/routes.ts'));
     assert.ok(manifest.patched.includes('src/core/navigation/routes/RouteContract.ts'));
     assert.ok(manifest.patched.includes('src/core/deepLinking/DeepLinkingService.ts'));
 });
@@ -132,13 +132,13 @@ test('full mode: navigation edits merge into the existing generate.js manifest',
     const repo = repoWithStarter();
     fs.writeFileSync(path.join(repo, '.claude-skill-manifest.json'), JSON.stringify({
         feature: 'OrderTracking', mode: 'create',
-        created: ['src/features/OrderTracking/data/dtos/TrackOrderDTO.ts'],
+        created: ['src/features/order-tracking/data/dtos/TrackOrderDTO.ts'],
         patched: ['src/core/di/tokens.ts'],
     }, null, 2));
     runNav(repo, navSpec());
     const manifest = readManifest(repo);
     assert.equal(manifest.mode, 'create', 'existing manifest is merged, not replaced');
-    assert.ok(manifest.created.includes('src/features/OrderTracking/data/dtos/TrackOrderDTO.ts'));
+    assert.ok(manifest.created.includes('src/features/order-tracking/data/dtos/TrackOrderDTO.ts'));
     assert.ok(manifest.created.includes('app/service-flow/order-tracking.tsx'));
     assert.ok(manifest.patched.includes('src/core/di/tokens.ts'));
     assert.ok(manifest.patched.includes('src/core/navigation/routes/Routes.ts'));
@@ -201,11 +201,11 @@ test('spec without a design block is rejected before touching anything', () => {
 test('existing route file and feature routes.ts are never overwritten', () => {
     const repo = repoWithStarter();
     write(repo, 'app/service-flow/order-tracking.tsx', '// hand-written route\n');
-    write(repo, 'src/features/OrderTracking/presentation/routes.ts', '// hand-written routes\n');
+    write(repo, 'src/features/order-tracking/presentation/routes.ts', '// hand-written routes\n');
     const { result } = runNav(repo, navSpec());
     const summary = JSON.parse(result.stdout);
     assert.equal(read(repo, 'app/service-flow/order-tracking.tsx'), '// hand-written route\n');
-    assert.equal(read(repo, 'src/features/OrderTracking/presentation/routes.ts'), '// hand-written routes\n');
+    assert.equal(read(repo, 'src/features/order-tracking/presentation/routes.ts'), '// hand-written routes\n');
     assert.ok(summary.skippedExisting >= 2);
     assert.deepEqual(summary.created, []);
 });

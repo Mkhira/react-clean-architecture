@@ -22,7 +22,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { featureModel, queryKeyName, queryKeyValue } = require('./generate.js');
+const { featureModel, queryKeyName, queryKeyValue, resolveFeatureDir } = require('./generate.js');
 
 const HELP = `register-di.js — register a generated feature in DI, i18n, config, and env files.
 
@@ -181,14 +181,14 @@ function updateTokens(repo, f) {
     }
 
     const imports = [
-        `import type { ${f.serviceInterface} } from '@features/${f.feature}/data/IServices/${f.serviceInterface}';`,
-        `import type { ${f.repositoryInterface} } from '@features/${f.feature}/domain/IRepositories/${f.repositoryInterface}';`,
-        `import type { ${f.errorType} } from '@features/${f.feature}/domain/errors/${f.errorType}';`,
+        `import type { ${f.serviceInterface} } from '@features/${f.featureDir}/data/services/${f.serviceInterface}';`,
+        `import type { ${f.repositoryInterface} } from '@features/${f.featureDir}/domain/repositories/${f.repositoryInterface}';`,
+        `import type { ${f.errorType} } from '@features/${f.featureDir}/domain/errors/${f.errorType}';`,
     ];
     for (const e of f.endpoints) {
         const names = [e.hasResponse ? e.entity : null, e.inputFields.length ? e.input : null].filter(Boolean);
         if (names.length) {
-            imports.push(`import type { ${names.join(', ')} } from '@features/${f.feature}/domain/entities/${e.entity}';`);
+            imports.push(`import type { ${names.join(', ')} } from '@features/${f.featureDir}/domain/entities/${e.entity}';`);
         }
     }
     content = insertLines(content, '// <create-feature:token-imports>', imports, label);
@@ -246,12 +246,19 @@ function registrationBlock(f) {
                 dependencyContainer.resolve(TOKENS.${f.feature}Service),
             ),
     });`,
+        // use cases take an ILogger (they log failures before returning Result.err),
+        // so they register through container.ts's withLogger helper — same shape the
+        // integrated-tariff use cases use
         ...f.endpoints.map(
             (e) => `    container.register(TOKENS.${e.useCase}, {
-        useFactory: (dependencyContainer) =>
-            new ${e.useCase}(
-                dependencyContainer.resolve(TOKENS.${f.feature}Repository),
-            ),
+        useFactory: withLogger(
+            '${e.useCase}',
+            (dependencyContainer, logger) =>
+                new ${e.useCase}(
+                    dependencyContainer.resolve(TOKENS.${f.feature}Repository),
+                    logger
+                )
+        ),
     });`
         ),
     ];
@@ -283,10 +290,10 @@ function updateContainer(repo, f) {
         // mock lane: import ONLY the mock (the real class stays on disk but
         // unreferenced — importing both would leave a dead import after tsc)
         f.mock
-            ? `import { ${f.mockServiceClass} } from '@features/${f.feature}/data/services/${f.mockServiceClass}';`
-            : `import { ${f.serviceClass} } from '@features/${f.feature}/data/services/${f.serviceClass}';`,
-        `import { ${f.repositoryClass} } from '@features/${f.feature}/data/repositories/${f.repositoryClass}';`,
-        ...f.endpoints.map((e) => `import { ${e.useCase} } from '@features/${f.feature}/domain/use-cases/${e.useCase}';`),
+            ? `import { ${f.mockServiceClass} } from '@features/${f.featureDir}/data/services/${f.mockServiceClass}';`
+            : `import { ${f.serviceClass} } from '@features/${f.featureDir}/data/services/${f.serviceClass}';`,
+        `import { ${f.repositoryClass} } from '@features/${f.featureDir}/data/repositories/${f.repositoryClass}';`,
+        ...f.endpoints.map((e) => `import { ${e.useCase} } from '@features/${f.featureDir}/domain/use-cases/${e.useCase}';`),
     ];
     content = insertLines(content, '// <create-feature:imports>', imports, label);
 
@@ -338,7 +345,7 @@ function updateI18n(repo, f) {
     content = plantAnchorBeforeMatch(file, content, '// <create-feature:i18n-features>', /^\} as const;/, label, '    ');
 
     const imports = [
-        `import ${f.featureCamel} from '@features/${f.feature}/presentation/translations';`,
+        `import ${f.featureCamel} from '@features/${f.featureDir}/presentation/translations';`,
     ];
     content = insertLines(content, '// <create-feature:i18n-imports>', imports, label);
 
@@ -524,9 +531,10 @@ function main() {
     }
 
     const f = featureModel(spec);
+    f.featureDir = resolveFeatureDir(repo, spec.feature);
 
     // never register DI entries pointing at files that don't exist yet
-    const generatedServiceFile = path.join(repo, 'src', 'features', f.feature, 'data', 'services', `${f.serviceClass}.ts`);
+    const generatedServiceFile = path.join(repo, 'src', 'features', f.featureDir, 'data', 'services', `${f.serviceClass}.ts`);
     if (!fs.existsSync(generatedServiceFile)) {
         console.error(`register-di.js: ${path.relative(repo, generatedServiceFile)} not found — run generate.js first.`);
         return 1;

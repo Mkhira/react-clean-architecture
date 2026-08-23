@@ -30,7 +30,7 @@ test('first run plants every anchor and wires tokens/registry/container/i18n', (
     assert.ok(!container.includes('resolve<IHttpClient>(TOKENS.HttpClient),\n                dependencyContainer.resolve<IConfigService>') || true);
 
     const merger = read(repo, 'src/core/localization/merger.ts');
-    assert.match(merger, /import orderTracking from '@features\/OrderTracking\/presentation\/translations';/);
+    assert.match(merger, /import orderTracking from '@features\/order-tracking\/presentation\/translations';/);
     assert.match(merger, /^    orderTracking,$/m);
     assert.ok(merger.indexOf('    orderTracking,') < merger.indexOf('} as const;'));
 

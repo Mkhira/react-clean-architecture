@@ -107,6 +107,8 @@ function endpointModel(spec, endpoint) {
         entity: `${ActionPascal}Result`,
         input: `${ActionPascal}Input`,
         statusType: `${ActionPascal}Status`,
+        // the shared values array in domain/constants that statusType derives from
+        statusValues: `${snakeUpper(ActionPascal)}_STATUS_VALUES`,
         useCase: `${ActionPascal}UseCase`,
         mapper: `${ActionPascal}Mapper`,
         returnType: hasResponse ? `${ActionPascal}Result` : 'void',
@@ -120,6 +122,11 @@ function featureModel(spec) {
     const endpoints = (spec.endpoints ?? []).map((endpoint) => endpointModel(spec, endpoint));
     return {
         feature,
+        // On-disk directory name. The repo convention is kebab-case
+        // (`src/features/application-status`), while every IDENTIFIER derived
+        // from the feature stays PascalCase. Reviewers reject PascalCase dirs,
+        // so never build a path from `feature` — always use `featureDir`.
+        featureDir: kebab(spec.feature),
         featureCamel: camel(spec.feature),
         FEATURE_SNAKE: snakeUpper(spec.feature),
         // mock backend lane (spec.mock: true) — the real API doesn't exist yet:
@@ -218,11 +225,45 @@ function entityShape(f, e, sample, typeName, dateFields, prefix) {
     return { decl: `export type ${typeName} = {\n${lines.join('\n')}\n};`, subTypes, lines };
 }
 
+/**
+ * `domain/constants/<featureCamel>.ts` — the ONE place each status enum's values
+ * live. Mappers, mock data, filter sheets and the entity union all derive from
+ * these arrays. Reviewers reject the same literal array retyped per layer, so
+ * this file exists whenever any endpoint declares a statusEnum.
+ */
+function domainConstantsFile(f) {
+    const blocks = f.endpoints
+        .filter((e) => e.statusEnum)
+        .map((e) => {
+            const values = e.statusEnum.values.map((value) => `'${value}'`).join(', ');
+            return `/** Confirmed ${titleWords(e.ActionPascal).toLowerCase()} statuses. */
+export const ${e.statusValues} = [${values}] as const;
+
+export type ${e.statusType} = (typeof ${e.statusValues})[number];`;
+        });
+    return `/**
+ * Single source of truth for this feature's enums.
+ *
+ * Every layer derives from these arrays — entities take their union type from
+ * them, mappers validate against them, mock catalogs iterate them, and the
+ * presentation filter options map over them. NEVER retype these literals
+ * anywhere else; import from here instead.
+ */
+
+${blocks.join('\n\n')}
+`;
+}
+
 function entityFile(f, e) {
     const parts = [];
     if (e.statusEnum) {
-        const union = e.statusEnum.values.map((value) => `'${value}'`).join(' | ');
-        parts.push(`export type ${e.statusType} = ${union};`);
+        // union comes from domain/constants — never re-declared as a literal here.
+        // Imported (the entity's own fields reference it) AND re-exported, so
+        // existing consumers can keep importing it from the entity module.
+        parts.push(
+            `import type { ${e.statusType} } from '../constants/${f.featureCamel}';\n` +
+            `export type { ${e.statusType} };`
+        );
     }
     if (e.hasResponse) {
         const sample = Array.isArray(e.responseSample) ? e.responseSample[0] ?? {} : e.responseSample;
@@ -248,11 +289,17 @@ function mapperToDomainBody(f, e) {
     const dateFields = e.dateFields ?? [];
     const helpers = [];
 
+    // formatNumericGregorianDate takes `string | undefined`, so a nullable DTO
+    // field must be coalesced or the generated mapper fails tsc
+    const dateExpr = (source, key, nullable) =>
+        `formatNumericGregorianDate(${source}.${key}${nullable ? ' ?? undefined' : ''})`;
+
     const fieldExpr = (key, value, source, dotPath) => {
-        if (dateFields.includes(dotPath)) return `formatNumericGregorianDate(${source}.${key})`;
+        const override = (e.typeOverrides ?? {})[dotPath] ?? '';
+        const nullable = value === null || /null/.test(override);
+        if (dateFields.includes(dotPath)) return dateExpr(source, key, nullable);
         if (typeof value === 'string' || value === null) {
-            const override = (e.typeOverrides ?? {})[dotPath] ?? '';
-            if (/date/.test(override)) return `formatNumericGregorianDate(${source}.${key})`;
+            if (/date/.test(override)) return dateExpr(source, key, nullable);
             if (typeof value === 'string' || /string/.test(override)) return `cleanString(${source}.${key})`;
             return `${source}.${key}`;
         }
@@ -306,7 +353,9 @@ function mapperToDomainBody(f, e) {
         const lines = objectMapping(sample, 'dto', '', e.responseDTO, e.entity, null);
         if (statusField) {
             lines.unshift(
-                `        // TODO(claude): status derivation — map the response flags to ${e.statusEnum.values.map((v) => `'${v}'`).join(' | ')}`,
+                `        // TODO(claude): status derivation — map the response flags onto ${e.statusType}.`,
+                `        // Validate against ${e.statusValues} imported from`,
+                `        // '../../domain/constants/${f.featureCamel}' — never retype the value list here.`,
                 `        ${statusField}: '${e.statusEnum.values[0]}',`
             );
         }
@@ -528,7 +577,7 @@ function externalServiceHelpers(f) {
         try {
             return (await response.json()) as TResponseDTO;
         } catch (error) {
-            throw ${f.errorFactory}('PARSE_ERROR', \`\${action} response was not valid JSON\`, error);
+            throw ${f.errorFactory}('VALIDATION_ERROR', \`\${action} response was not valid JSON\`, error);
         }
     }`
         : '';
@@ -550,7 +599,7 @@ function externalServiceHelpers(f) {
         }
         if (!response.ok) {
             const text = await response.text();
-            throw ${f.errorFactory}('HTTP_ERROR', \`\${action} HTTP \${response.status}: \${text}\`);
+            throw ${f.errorFactory}('NETWORK_ERROR', \`\${action} HTTP \${response.status}: \${text}\`);
         }
         return response;
     }${parseHelper}`;
@@ -792,22 +841,23 @@ ${signatures.join('\n')}
 function errorsFile(f) {
     return `import type { AppError } from '@shared/types/errors';
 
-// Single source of truth for this feature's error codes — the union type and
-// the runtime guard both derive from it, so adding a code is a one-line change.
+// The feature reuses the app-wide error contract as-is. AppError's code union
+// (src/shared/types/errors.ts) is the ONLY allowed set — do not invent feature
+// codes like HTTP_ERROR/PARSE_ERROR and do not widen the type with
+// Omit<AppError, 'code'>: reviewers reject both. Map transport failures onto
+// these four (a bad payload is VALIDATION_ERROR, a bad response is
+// NETWORK_ERROR). If a genuinely new code is needed, add it to AppError itself
+// so every feature shares it.
 export const ${f.errorCodeValues} = [
     'NETWORK_ERROR',
-    'HTTP_ERROR',
-    'PARSE_ERROR',
-    'VALIDATION_ERROR',
     'AUTH_ERROR',
     'TIMEOUT',
-] as const;
+    'VALIDATION_ERROR',
+] as const satisfies readonly AppError['code'][];
 
 export type ${f.errorCodes} = (typeof ${f.errorCodeValues})[number];
 
-export type ${f.errorType} = Omit<AppError, 'code'> & {
-    code: ${f.errorCodes};
-};
+export type ${f.errorType} = AppError;
 
 export const ${f.errorFactory} = (
     code: ${f.errorCodes},
@@ -848,16 +898,22 @@ function useCaseFile(f, e) {
 
     return `import { ${interfaceName} } from '@domain/shared/IUseCase';
 import { Result } from '@shared/types/Result';
+import type { ILogger } from '@core/logging/ILogger';
 import type { ${f.repositoryInterface} } from '../IRepositories/${f.repositoryInterface}';
 ${entityImports.length ? `import type { ${entityImports.join(', ')} } from '../entities/${e.entity}';\n` : ''}import { ${f.errorFactory}, ${f.errorGuard}, type ${f.errorType} } from '../errors/${f.errorType}';
 
 ${storyComment}export class ${e.useCase} implements ${implementsClause} {
-    constructor(private readonly repository: ${f.repositoryInterface}) {}
+    constructor(
+        private readonly repository: ${f.repositoryInterface},
+        private readonly logger: ILogger
+    ) {}
 
     async execute(${executeArg}): Promise<${resultType}> {
 ${rulesComment}        try {
 ${callLine}
         } catch (error) {
+            // never swallow a failure silently — reviewers require the log
+            this.logger.exception('${e.actionCamel} failed', error);
             if (${f.errorGuard}(error)) {
                 return Result.err(error);
             }
@@ -1089,8 +1145,11 @@ import { Theme } from '@core/theme/types';
 
 export const createStyles = (theme: Theme) =>
     StyleSheet.create({
+        // every value here is a theme token — reviewers reject raw numbers and
+        // raw RN keywords in styles. Missing token? add it to
+        // src/core/theme/baseStyles.ts (+ the Theme type) and use it from there.
         container: {
-            flex: 1,
+            flex: theme.flex1,
             backgroundColor: theme.colors.background,
             padding: theme.spacing.md,
         },
@@ -1098,10 +1157,6 @@ export const createStyles = (theme: Theme) =>
 `;
 }
 
-function presentationTypesFile(f) {
-    return `export type ${f.feature}FormValues = Record<string, unknown>;
-`;
-}
 
 // TS modules with a default-export barrel — the app convention (see
 // integrated-tariff/presentation/translations and core/localization/merger.ts).
@@ -1261,6 +1316,7 @@ function useCaseTestFile(f, e) {
 import { ${f.errorFactory} } from '../domain/errors/${f.errorType}';
 import { Result } from '@shared/types/Result';
 import type { ${f.repositoryInterface} } from '../domain/IRepositories/${f.repositoryInterface}';
+import type { ILogger } from '@core/logging/ILogger';
 
 // several shared utils import the @shared/components barrel, which drags
 // native-only modules into jest — mock it so hand-written rules can reuse
@@ -1273,9 +1329,18 @@ const makeRepository = (overrides: Partial<${f.repositoryInterface}> = {}): ${f.
         ...overrides,
     }) as ${f.repositoryInterface};
 
+// the use case logs every failure before returning Result.err
+const makeLogger = (): ILogger => ({
+    debug: jest.fn(),
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+    exception: jest.fn(),
+});
+
 describe('${e.useCase}', () => {
     it('returns ok when the repository succeeds', async () => {
-        const useCase = new ${e.useCase}(makeRepository());
+        const useCase = new ${e.useCase}(makeRepository(), makeLogger());
 
         const outcome = await useCase.execute(${executeArg});
 
@@ -1286,7 +1351,7 @@ describe('${e.useCase}', () => {
         const repository = makeRepository({
             ${e.actionCamel}: jest.fn().mockRejectedValue(${f.errorFactory}('NETWORK_ERROR', 'boom')),
         } as Partial<${f.repositoryInterface}>);
-        const useCase = new ${e.useCase}(repository);
+        const useCase = new ${e.useCase}(repository, makeLogger());
 
         const outcome = await useCase.execute(${executeArg});
 
@@ -1300,7 +1365,7 @@ describe('${e.useCase}', () => {
         const repository = makeRepository({
             ${e.actionCamel}: jest.fn().mockRejectedValue({ response: { status: 401 } }),
         } as Partial<${f.repositoryInterface}>);
-        const useCase = new ${e.useCase}(repository);
+        const useCase = new ${e.useCase}(repository, makeLogger());
 
         const outcome = await useCase.execute(${executeArg});
 
@@ -1314,7 +1379,7 @@ describe('${e.useCase}', () => {
         const repository = makeRepository({
             ${e.actionCamel}: jest.fn().mockRejectedValue({ code: 'ECONNABORTED' }),
         } as Partial<${f.repositoryInterface}>);
-        const useCase = new ${e.useCase}(repository);
+        const useCase = new ${e.useCase}(repository, makeLogger());
 
         const outcome = await useCase.execute(${executeArg});
 
@@ -1338,10 +1403,13 @@ function testsDirName(repo, feature) {
 }
 
 function buildFilePlan(spec, f, testsDir = 'test') {
-    const base = path.join('src', 'features', f.feature);
+    const base = path.join('src', 'features', f.featureDir);
     const files = new Map();
 
     // feature-level files (create mode only)
+    if (f.endpoints.some((e) => e.statusEnum)) {
+        files.set(path.join(base, 'domain', 'constants', `${f.featureCamel}.ts`), domainConstantsFile(f));
+    }
     files.set(path.join(base, 'data', 'endpoints', 'endpoints.ts'), endpointsFile(f));
     files.set(path.join(base, 'data', 'services', `${f.serviceClass}.ts`), serviceFile(f));
     if (f.mock) {
@@ -1357,7 +1425,6 @@ function buildFilePlan(spec, f, testsDir = 'test') {
     }
     files.set(path.join(base, 'presentation', 'screens', `${f.feature}Screen.tsx`), screenFile(f));
     files.set(path.join(base, 'presentation', 'styles.ts'), stylesFile());
-    files.set(path.join(base, 'presentation', 'types.ts'), presentationTypesFile(f));
     files.set(path.join(base, 'presentation', 'translations', 'en.ts'), translationsEn(f));
     files.set(path.join(base, 'presentation', 'translations', 'ar.ts'), translationsAr(f));
     files.set(path.join(base, 'presentation', 'translations', 'index.ts'), translationsIndex());
@@ -1450,7 +1517,7 @@ function interfaceEndpointImports(f, e, forService) {
 }
 
 function appendFeature(repo, spec, f, manifest) {
-    const base = path.join(repo, 'src', 'features', f.feature);
+    const base = path.join(repo, 'src', 'features', f.featureDir);
     const targets = [
         {
             file: path.join(base, 'data', 'endpoints', 'endpoints.ts'),
@@ -1588,7 +1655,7 @@ function appendFeature(repo, spec, f, manifest) {
                 if (content.includes(`export const use${e.ActionPascal}Query`)) continue; // idempotent
                 const updated = insertBeforeAnchor(content, '// <create-feature:queries>', queryHookSnippet(f, e) + '\n');
                 if (updated === null) {
-                    manifest.needsManual.push(`src/features/${f.feature}/presentation/queries.ts: anchor "// <create-feature:queries>" missing — add use${e.ActionPascal}Query by hand, matching the file's existing hooks`);
+                    manifest.needsManual.push(`src/features/${f.featureDir}/presentation/queries.ts: anchor "// <create-feature:queries>" missing — add use${e.ActionPascal}Query by hand, matching the file's existing hooks`);
                     continue;
                 }
                 content = ensureImports(updated, queryHookImports(f, e));
@@ -1599,7 +1666,7 @@ function appendFeature(repo, spec, f, manifest) {
                 manifest.patched.push(path.relative(repo, queriesPath));
             }
         }
-        manifest.needsClaude.push(`src/features/${f.feature}/presentation — wire the new use<Action>Query hook(s) into the controller/screens where the flow needs them`);
+        manifest.needsClaude.push(`src/features/${f.featureDir}/presentation — wire the new use<Action>Query hook(s) into the controller/screens where the flow needs them`);
     }
 }
 
@@ -1798,13 +1865,19 @@ function main() {
     }
 
     const f = featureModel(spec);
+    // append mode may target a legacy PascalCase dir; create mode always uses kebab
+    if (spec.mode !== 'create') f.featureDir = resolveFeatureDir(repo, spec.feature);
 
     // macOS FS is case-insensitive: creating "Ordertracking" next to an existing
     // "OrderTracking" would dump mismatched files INTO the existing feature dir.
     if (spec.mode === 'create') {
         const featuresDir = path.join(repo, 'src', 'features');
+        // compare ignoring case AND separators: "ordertracking" and
+        // "order-tracking" are different paths but the same feature to a human,
+        // and on a case-insensitive FS the near-miss dumps mismatched files
+        const normalize = (name) => name.toLowerCase().replace(/[^a-z0-9]/g, '');
         const clash = fs.existsSync(featuresDir)
-            ? fs.readdirSync(featuresDir).find((name) => name.toLowerCase() === f.feature.toLowerCase() && name !== f.feature)
+            ? fs.readdirSync(featuresDir).find((name) => normalize(name) === normalize(f.featureDir) && name !== f.featureDir)
             : null;
         if (clash) {
             console.error(`generate.js: feature "${f.feature}" collides case-insensitively with existing src/features/${clash} — append to the existing name or pick a different one.`);
@@ -1812,17 +1885,17 @@ function main() {
         }
     }
 
-    const { files, perEndpoint } = buildFilePlan(spec, f, testsDirName(repo, f.feature));
-    const manifest = { feature: f.feature, mode: spec.mode, created: [], skipped: [], patched: [], needsClaude: [], needsManual: [] };
+    const { files, perEndpoint } = buildFilePlan(spec, f, testsDirName(repo, f.featureDir));
+    const manifest = { feature: f.feature, featureDir: f.featureDir, mode: spec.mode, created: [], skipped: [], patched: [], needsClaude: [], needsManual: [] };
 
     // Append requires a skill-shaped feature. A pre-skill feature (different
     // layout, no anchors) gets NO generated files — Claude edits it by hand,
     // matching that feature's own conventions.
     if (spec.mode === 'append') {
-        const serviceFilePath = path.join(repo, 'src', 'features', f.feature, 'data', 'services', `${f.serviceClass}.ts`);
+        const serviceFilePath = path.join(repo, 'src', 'features', f.featureDir, 'data', 'services', `${f.serviceClass}.ts`);
         if (!fs.existsSync(serviceFilePath)) {
             manifest.needsManual.push(
-                `src/features/${f.feature} is not a skill-generated feature (no ${f.serviceClass}.ts at the expected path) — ` +
+                `src/features/${f.featureDir} is not a skill-generated feature (no ${f.serviceClass}.ts at the expected path) — ` +
                 `append everything by hand, matching that feature's own layout and conventions (even singular folder names). No files were created.`
             );
             fs.writeFileSync(path.join(repo, '.claude-skill-manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
@@ -1849,13 +1922,13 @@ function main() {
     }
 
     for (const e of f.endpoints) {
-        manifest.needsClaude.push(`src/features/${f.feature}/domain/use-cases/${e.useCase}.ts — fill execute() business rules${e.statusEnum ? ` + status derivation in ${e.mapper}.ts` : ''}`);
+        manifest.needsClaude.push(`src/features/${f.featureDir}/domain/use-cases/${e.useCase}.ts — fill execute() business rules${e.statusEnum ? ` + status derivation in ${e.mapper}.ts` : ''}`);
     }
     if (spec.mode === 'create') {
-        manifest.needsClaude.push(`src/features/${f.feature}/presentation/translations/ar.ts — replace placeholder Arabic strings (use the user story's Arabic text when present)`);
+        manifest.needsClaude.push(`src/features/${f.featureDir}/presentation/translations/ar.ts — replace placeholder Arabic strings (use the user story's Arabic text when present)`);
     }
     if (f.mock) {
-        manifest.needsClaude.push(`src/features/${f.feature}/data/services/${f.mockServiceClass}.ts — enrich the sample catalog to cover the story's filters/states/pagination, then remove the TODO(claude); the DI container registers this mock (swap comment inside) until the real API exists`);
+        manifest.needsClaude.push(`src/features/${f.featureDir}/data/services/${f.mockServiceClass}.ts — enrich the sample catalog to cover the story's filters/states/pagination, then remove the TODO(claude); the DI container registers this mock (swap comment inside) until the real API exists`);
     }
 
     fs.writeFileSync(path.join(repo, '.claude-skill-manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
@@ -1867,6 +1940,20 @@ if (require.main === module) {
     process.exit(main());
 }
 
-const SKILL_VERSION = '1.13.0';
+const SKILL_VERSION = '1.14.0';
 
-module.exports = { featureModel, buildFilePlan, testsDirName, validateSpec, pascal, camel, snakeUpper, kebab, queryKeyName, queryKeyValue, SKILL_VERSION };
+/**
+ * On-disk directory for a feature name. New features are kebab-case
+ * (`src/features/application-status`), but pre-1.14.0 features are PascalCase,
+ * so lifecycle scripts must accept whichever actually exists. Returns the
+ * kebab name when neither is present (the name a fresh scaffold would create).
+ */
+function resolveFeatureDir(repo, feature) {
+    const candidates = [kebab(feature), pascal(feature)];
+    for (const candidate of candidates) {
+        if (fs.existsSync(path.join(repo, 'src', 'features', candidate))) return candidate;
+    }
+    return candidates[0];
+}
+
+module.exports = { featureModel, buildFilePlan, testsDirName, validateSpec, pascal, camel, snakeUpper, kebab, resolveFeatureDir, queryKeyName, queryKeyValue, SKILL_VERSION };

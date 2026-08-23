@@ -30,17 +30,17 @@ test('CORE: POST with path AND query params — service/repo/interface signature
     const repo = makeFixtureRepo();
     runScript('generate.js', [writeSpec(makeTmpDir('s'), spec), '--repo', repo]);
 
-    const service = read(repo, 'src/features/OrderTracking/data/services/OrderTrackingService.ts');
+    const service = read(repo, 'src/features/order-tracking/data/services/OrderTrackingService.ts');
     // external endpoint: url expression must receive the declared path param;
     // v1.8.0: the service takes the DOMAIN input and builds the payload itself
     assert.match(service, /async trackOrder\(orderId: string, input: TrackOrderInput, query: \{ notify: string \}\)/);
     assert.match(service, /const payload = TrackOrderMapper\.toDTO\(input\);/);
     assert.match(service, /ORDER_TRACKING_ENDPOINTS\.TRACK_ORDER\(orderId\)/);
 
-    const repository = read(repo, 'src/features/OrderTracking/data/repositories/OrderTrackingRepository.ts');
+    const repository = read(repo, 'src/features/order-tracking/data/repositories/OrderTrackingRepository.ts');
     assert.match(repository, /this\.apiService\.trackOrder\(input\.orderId, input, \{ notify: input\.notify \}\)/);
 
-    const iface = read(repo, 'src/features/OrderTracking/data/IServices/IOrderTrackingService.ts');
+    const iface = read(repo, 'src/features/order-tracking/data/IServices/IOrderTrackingService.ts');
     assert.match(iface, /trackOrder\(orderId: string, input: TrackOrderInput, query: \{ notify: string \}\): Promise<TrackOrderResult>;/);
     assert.ok(!iface.includes('data/dtos'), 'domain interface must not import from data/');
 });
@@ -53,7 +53,7 @@ test('CORE: app-host POST with query params passes axios params config', () => {
     spec.endpoints[0].queryParams = [{ name: 'notify', type: 'string' }];
     const repo = makeFixtureRepo();
     runScript('generate.js', [writeSpec(makeTmpDir('s'), spec), '--repo', repo]);
-    const service = read(repo, 'src/features/OrderTracking/data/services/OrderTrackingService.ts');
+    const service = read(repo, 'src/features/order-tracking/data/services/OrderTrackingService.ts');
     assert.match(service, /this\.httpClient\.post<TrackOrderResult>\(ORDER_TRACKING_ENDPOINTS\.TRACK_ORDER, payload, \{ mapper: TrackOrderMapper\.toDomain, params: query \}\)/);
 });
 
@@ -63,10 +63,10 @@ test('CORE: NON-nullable nested objects map directly — no contradictory ": nul
     spec.endpoints[0].dateFields = [];
     const repo = makeFixtureRepo();
     runScript('generate.js', [writeSpec(makeTmpDir('s'), spec), '--repo', repo]);
-    const mapper = read(repo, 'src/features/OrderTracking/data/mappers/TrackOrderMapper.ts');
+    const mapper = read(repo, 'src/features/order-tracking/data/mappers/TrackOrderMapper.ts');
     assert.match(mapper, /meta: toTrackOrderMeta\(dto\.Meta\),/);
     assert.ok(!mapper.includes('dto.Meta != null'), 'no null-fallback for a non-nullable nested object');
-    const entity = read(repo, 'src/features/OrderTracking/domain/entities/TrackOrderResult.ts');
+    const entity = read(repo, 'src/features/order-tracking/domain/entities/TrackOrderResult.ts');
     assert.match(entity, /meta: TrackOrderMeta;/);
 });
 
@@ -77,7 +77,7 @@ test('CORE: nullable nested objects (override) keep the guarded mapping', () => 
     spec.endpoints[0].dateFields = [];
     const repo = makeFixtureRepo();
     runScript('generate.js', [writeSpec(makeTmpDir('s'), spec), '--repo', repo]);
-    const mapper = read(repo, 'src/features/OrderTracking/data/mappers/TrackOrderMapper.ts');
+    const mapper = read(repo, 'src/features/order-tracking/data/mappers/TrackOrderMapper.ts');
     assert.match(mapper, /meta: dto\.Meta \? toTrackOrderMeta\(dto\.Meta\) : null,/);
 });
 
@@ -103,12 +103,12 @@ test('remove: dry run touches nothing; --apply unwires everything but keeps the 
 
     const dry = runScript('remove-feature.js', ['OrderTracking', '--repo', repo]);
     assert.equal(dry.status, 0);
-    assert.ok(exists(repo, 'src/features/OrderTracking/feature-spec.json'), 'dry run must not delete');
+    assert.ok(exists(repo, 'src/features/order-tracking/feature-spec.json'), 'dry run must not delete');
     assert.match(read(repo, 'src/core/di/tokens.ts'), /OrderTrackingService/);
 
     const applied = runScript('remove-feature.js', ['OrderTracking', '--repo', repo, '--apply']);
     assert.equal(applied.status, 0, applied.stdout + applied.stderr);
-    assert.ok(!exists(repo, 'src/features/OrderTracking'), 'feature dir removed');
+    assert.ok(!exists(repo, 'src/features/order-tracking'), 'feature dir removed');
 
     for (const file of ['src/core/di/tokens.ts', 'src/core/di/container.ts', 'src/core/localization/merger.ts',
         'src/data/services/keys.ts',
@@ -140,9 +140,9 @@ test('rename: --apply renames dir/files/identifiers/env keys; action-scoped name
     const result = runScript('rename-feature.js', ['OrderTracking', 'ShipmentTrace', '--repo', repo, '--apply']);
     assert.equal(result.status, 0, result.stdout + result.stderr);
 
-    assert.ok(!exists(repo, 'src/features/OrderTracking'));
-    assert.ok(exists(repo, 'src/features/ShipmentTrace/data/services/ShipmentTraceService.ts'));
-    assert.ok(exists(repo, 'src/features/ShipmentTrace/presentation/controller.ts'));
+    assert.ok(!exists(repo, 'src/features/order-tracking'));
+    assert.ok(exists(repo, 'src/features/shipment-trace/data/services/ShipmentTraceService.ts'));
+    assert.ok(exists(repo, 'src/features/shipment-trace/presentation/controller.ts'));
 
     const tokens = read(repo, 'src/core/di/tokens.ts');
     assert.match(tokens, /ShipmentTraceService: 'IShipmentTraceService',/);
@@ -150,7 +150,7 @@ test('rename: --apply renames dir/files/identifiers/env keys; action-scoped name
     // use-case tokens are ACTION-scoped: unchanged by a feature rename
     assert.match(tokens, /TrackOrderUseCase: 'TrackOrderUseCase',/);
 
-    const service = read(repo, 'src/features/ShipmentTrace/data/services/ShipmentTraceService.ts');
+    const service = read(repo, 'src/features/shipment-trace/data/services/ShipmentTraceService.ts');
     assert.match(service, /class ShipmentTraceService implements IShipmentTraceService/);
     assert.match(service, /SHIPMENT_TRACE_ENDPOINTS/);
     assert.match(service, /shipmentTraceApiKey/);
@@ -160,10 +160,10 @@ test('rename: --apply renames dir/files/identifiers/env keys; action-scoped name
         assert.ok(!read(repo, file).includes('ORDER_TRACKING'));
     }
     assert.match(read(repo, 'src/core/config/ConfigService.ts'), /shipmentTraceBaseUrl: process\.env\.EXPO_PUBLIC_SHIPMENT_TRACE_BASE_URL/);
-    assert.match(read(repo, 'src/core/localization/merger.ts'), /import shipmentTrace from '@features\/ShipmentTrace\/presentation\/translations';/);
+    assert.match(read(repo, 'src/core/localization/merger.ts'), /import shipmentTrace from '@features\/shipment-trace\/presentation\/translations';/);
     assert.match(read(repo, 'src/core/localization/merger.ts'), /^    shipmentTrace,$/m);
 
-    const persisted = read(repo, 'src/features/ShipmentTrace/feature-spec.json');
+    const persisted = read(repo, 'src/features/shipment-trace/feature-spec.json');
     assert.match(persisted, /"feature": "ShipmentTrace"/);
     assert.match(persisted, /EXPO_PUBLIC_SHIPMENT_TRACE_BASE_URL/);
 });
@@ -179,7 +179,7 @@ test('rename: refuses when the target name already exists in TOKENS', () => {
 
 test('migrate: regenerates machine-owned files, merges hand-added error codes, preserves hand-written files', () => {
     const { repo } = fullFixture();
-    const featureDir = path.join(repo, 'src/features/OrderTracking');
+    const featureDir = path.join(repo, 'src/features/order-tracking');
 
     // simulate a feature generated by OLD templates:
     // 1. old-format errors file with a hand-added code
@@ -220,7 +220,8 @@ export const isOrderTrackingError = (error: unknown): error is OrderTrackingErro
 
     const dry = runScript('migrate-feature.js', ['OrderTracking', '--repo', repo]);
     const dryReport = JSON.parse(dry.stdout.slice(0, dry.stdout.lastIndexOf('}') + 1));
-    assert.equal(dry.status, 0);
+    // exit 2: the dry run already reports the non-AppError code it must drop
+    assert.equal(dry.status, 2);
     assert.match(dryReport.fromVersion, /1\.0\.0/);
     assert.ok(dryReport.updated.some((file) => file.endsWith('OrderTrackingError.ts')));
     assert.ok(dryReport.updated.some((file) => file.endsWith('OrderTrackingService.ts')));
@@ -228,22 +229,35 @@ export const isOrderTrackingError = (error: unknown): error is OrderTrackingErro
     assert.match(fs.readFileSync(servicePath, 'utf8'), /oldTransport/, 'dry run must not write');
 
     const applied = runScript('migrate-feature.js', ['OrderTracking', '--repo', repo, '--apply']);
-    assert.equal(applied.status, 0, applied.stdout + applied.stderr);
 
-    const errors = read(repo, 'src/features/OrderTracking/domain/errors/OrderTrackingError.ts');
+    const errors = read(repo, 'src/features/order-tracking/domain/errors/OrderTrackingError.ts');
     assert.match(errors, /ORDER_TRACKING_ERROR_CODE_VALUES = \[/, 'new single-source format');
-    assert.match(errors, /'ORDER_EXPIRED',/, 'hand-added code merged');
     assert.match(errors, /\.includes\(/, 'new membership guard');
+    // v1.14.0: a feature error IS an AppError, so a hand-added code outside
+    // AppError's union cannot be carried over — it is dropped and reported
+    // (exit 2) instead of emitting a file that fails tsc.
+    assert.doesNotMatch(errors, /'ORDER_EXPIRED'/, 'non-AppError code must not be merged');
+    assert.equal(applied.status, 2, 'dropped code is reported as a problem');
+    assert.match(applied.stdout, /ORDER_EXPIRED.*DROPPED/s);
 
-    assert.match(read(repo, 'src/features/OrderTracking/data/services/OrderTrackingService.ts'), /private async requestExternal/);
-    assert.match(read(repo, 'src/features/OrderTracking/domain/use-cases/TrackOrderUseCase.ts'), /HAND WRITTEN RULES/, 'hand-written use case preserved');
+    assert.match(read(repo, 'src/features/order-tracking/data/services/OrderTrackingService.ts'), /private async requestExternal/);
+    assert.match(read(repo, 'src/features/order-tracking/domain/use-cases/TrackOrderUseCase.ts'), /HAND WRITTEN RULES/, 'hand-written use case preserved');
+    // the spec is NOT re-stamped while a problem stands: the dropped code still
+    // needs an owner decision, so the migration is deliberately re-runnable
     const { SKILL_VERSION } = require('../scripts/generate.js');
-    assert.ok(read(repo, 'src/features/OrderTracking/feature-spec.json').includes(`"skillVersion": "${SKILL_VERSION}"`));
+    assert.ok(!read(repo, 'src/features/order-tracking/feature-spec.json').includes(`"skillVersion": "${SKILL_VERSION}"`));
+
+    // once the code is gone from the old file, the migration completes and stamps
+    fs.writeFileSync(path.join(featureDir, 'domain/errors/OrderTrackingError.ts'),
+        read(repo, 'src/features/order-tracking/domain/errors/OrderTrackingError.ts').replace('AUTH_ERROR', 'AUTH_ERROR'));
+    const clean = runScript('migrate-feature.js', ['OrderTracking', '--repo', repo, '--apply']);
+    assert.equal(clean.status, 0, clean.stdout + clean.stderr);
+    assert.ok(read(repo, 'src/features/order-tracking/feature-spec.json').includes(`"skillVersion": "${SKILL_VERSION}"`));
 });
 
 test('migrate: old layouts are relocated (usecases + 1.11.x data/services interface + domain/repositories) with imports rewritten', () => {
     const { repo } = fullFixture();
-    const featureDir = path.join(repo, 'src', 'features', 'OrderTracking');
+    const featureDir = path.join(repo, 'src', 'features', 'order-tracking');
 
     // simulate a feature stuck on the old layouts: pre-1.11 `usecases` plus the
     // short-lived 1.11.x interface locations, with matching old import paths
@@ -287,24 +301,24 @@ test('migrate: old layouts are relocated (usecases + 1.11.x data/services interf
     const dryReport = JSON.parse(dry.stdout.slice(0, dry.stdout.lastIndexOf('}') + 1));
     assert.equal(dry.status, 0, dry.stdout + dry.stderr);
     assert.ok(dryReport.relocated.some((line) => line.includes('IServices')), 'dry run plans the relocation');
-    assert.ok(exists(repo, 'src/features/OrderTracking/domain/usecases/TrackOrderUseCase.ts'), 'dry run must not move files');
-    assert.ok(exists(repo, 'src/features/OrderTracking/data/services/IOrderTrackingService.ts'), 'dry run must not move files');
+    assert.ok(exists(repo, 'src/features/order-tracking/domain/usecases/TrackOrderUseCase.ts'), 'dry run must not move files');
+    assert.ok(exists(repo, 'src/features/order-tracking/data/services/IOrderTrackingService.ts'), 'dry run must not move files');
 
     const applied = runScript('migrate-feature.js', ['OrderTracking', '--repo', repo, '--apply']);
     assert.equal(applied.status, 0, applied.stdout + applied.stderr);
 
-    assert.ok(exists(repo, 'src/features/OrderTracking/data/IServices/IOrderTrackingService.ts'));
-    assert.ok(exists(repo, 'src/features/OrderTracking/domain/IRepositories/IOrderTrackingRepository.ts'));
-    assert.ok(exists(repo, 'src/features/OrderTracking/domain/use-cases/TrackOrderUseCase.ts'));
-    assert.ok(!exists(repo, 'src/features/OrderTracking/data/services/IOrderTrackingService.ts'), 'interface left data/services');
-    assert.ok(exists(repo, 'src/features/OrderTracking/data/services/OrderTrackingService.ts'), 'service impl stays in data/services');
-    assert.ok(!exists(repo, 'src/features/OrderTracking/domain/repositories'), 'old dirs removed');
-    assert.ok(!exists(repo, 'src/features/OrderTracking/domain/usecases'), 'old dirs removed');
+    assert.ok(exists(repo, 'src/features/order-tracking/data/IServices/IOrderTrackingService.ts'));
+    assert.ok(exists(repo, 'src/features/order-tracking/domain/IRepositories/IOrderTrackingRepository.ts'));
+    assert.ok(exists(repo, 'src/features/order-tracking/domain/use-cases/TrackOrderUseCase.ts'));
+    assert.ok(!exists(repo, 'src/features/order-tracking/data/services/IOrderTrackingService.ts'), 'interface left data/services');
+    assert.ok(exists(repo, 'src/features/order-tracking/data/services/OrderTrackingService.ts'), 'service impl stays in data/services');
+    assert.ok(!exists(repo, 'src/features/order-tracking/domain/repositories'), 'old dirs removed');
+    assert.ok(!exists(repo, 'src/features/order-tracking/domain/usecases'), 'old dirs removed');
 
-    const useCase = read(repo, 'src/features/OrderTracking/domain/use-cases/TrackOrderUseCase.ts');
+    const useCase = read(repo, 'src/features/order-tracking/domain/use-cases/TrackOrderUseCase.ts');
     assert.match(useCase, /HAND WRITTEN RULES/, 'hand-written content moved, not regenerated');
     assert.match(useCase, /'\.\.\/IRepositories\/IOrderTrackingRepository'/, 'old import path rewritten');
-    const testFile = read(repo, `src/features/OrderTracking/${testsDir}/TrackOrderUseCase.test.ts`);
+    const testFile = read(repo, `src/features/order-tracking/${testsDir}/TrackOrderUseCase.test.ts`);
     assert.match(testFile, /'\.\.\/domain\/use-cases\/TrackOrderUseCase'/);
     assert.match(testFile, /'\.\.\/domain\/IRepositories\/IOrderTrackingRepository'/);
 });

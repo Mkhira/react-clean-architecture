@@ -162,7 +162,10 @@ For each screen unit (screen + its sheets/dropdowns/state frames):
    "no shared match: CardDetails covers collapse but not X"). Rebuilding behavior a
    shared component already provides (collapsible card = CardDetails, label/value rows =
    Rows/CardDetailsRow, sheets = BottomSheetModal, etc.) is a review-blocking violation.
-3. **Generate** into `src/features/<Feature>/presentation/`:
+3. **Generate** into `src/features/<feature-dir>/presentation/` (kebab-case dir — SKILL.md
+   Step 1). Everything here is hand-written, so SKILL.md **Step 4b — REVIEW CONVENTIONS**
+   applies in full: shared enum constants, theme tokens only in styles, `Label` type
+   presets over raw `fontSize`, constants/types out of the controller, no dead modules.
    - Feature-local components: one folder each — `index.tsx` + `styles.ts` + `types.ts`
      (types.ts holds `<Component>Props` with one-line JSDoc per field; styles.ts exports
      `createStyles = (theme: Theme) => StyleSheet.create({...})`).
@@ -171,6 +174,11 @@ For each screen unit (screen + its sheets/dropdowns/state frames):
    - **Controller** (`controller.ts`): ALL UI state + handlers; screens stay prop-driven with
      zero business logic. Server state ONLY through `queries.ts` hooks (never useState).
      Level/step derivation logic belongs in a domain use case, not the controller.
+     This includes list plumbing: `keyExtractor`, `renderItem`'s data shaping, and the
+     `pagination` object are memoized in the controller and handed to the screen ready to
+     use — a screen that builds them itself is a review finding. Constants the controller
+     needs (page size, debounce ms, option-key arrays, tag/variant maps) live in
+     `presentation/constants.ts`, not inline; types live in `presentation/types.ts`.
    - **Hooks rules**: `useEffect` only for side effects that leave React (global loader sync
      `setLoader({isLoading})` + a cleanup-only release effect; `setMessagePopup` on error;
      settled-empty popups gated on `isSuccess && !isFetching && length === 0`; reset-on-open
@@ -184,7 +192,7 @@ For each screen unit (screen + its sheets/dropdowns/state frames):
      bottom buttons — e.g. a pure list/browse screen): PageStepper ALWAYS renders its
      default "التالي" footer, so hide it with a partial override cast —
      `footerActions={{ containerStyle: styles.hiddenFooter } as StepperActionsProps}` with
-     `hiddenFooter: { display: 'none' }` in styles.ts. The cast is safe: PageStepper spreads
+     `hiddenFooter: { display: theme.display.none }` in styles.ts (theme token, never the raw string — see Step 4b). The cast is safe: PageStepper spreads
      the override over its own step handlers (verified pattern, ApplicationStatus).
    - **Paginated lists (List organism + react-query)**: when search/filter state changes the
      query input, a cached page can answer INSTANTLY and swap the dataset within a single
