@@ -32,10 +32,11 @@ generator rules and audit checks, so the same findings can't recur:
   `formatNumericGregorianDate(dto.X)` where `X: string | null`, which does not typecheck
   against the helper's `string | undefined` parameter. Now coalesced.
 
-Interface-folder naming is deliberately unchanged (`data/IServices` +
-`domain/IRepositories`) — see docs/decisions.md; PR #305's reviewer prefers
-`data/services` + `domain/repositories`, which conflicts with the standing owner
-directive, so it needs an owner decision rather than a silent flip.
+Interface-folder layout is unchanged (`data/IServices` + `domain/IRepositories`) and
+confirmed correct: the PR #305 comment was about the LAYER ("the service should be
+inside the data directory not domain"), which v1.13.0 already satisfies — the service
+contract is a data-layer port in `data/IServices/`. The folder NAMES stay per the
+standing owner decision.
 
 Suite 146/146. SKILL_VERSION → 1.14.0.
 

@@ -96,10 +96,12 @@ file only records where they came from. Never load this during a feature run.
   `serviceFlow.pages.<camel>` object duplicating `services.<camel>`. Also fixed a real
   generator bug: a nullable date field produced
   `formatNumericGregorianDate(string | null)`, which does not typecheck. Suite 146/146.
-  **Interface-folder naming deliberately UNCHANGED** (`data/IServices` +
-  `domain/IRepositories`): PR #305's reviewer asked for `data/services` +
-  `domain/repositories`, but that contradicts the owner's standing v1.12.0/v1.13.0
-  directive ("keep naming IRepositories and IServices", "don't re-open"). The skill keeps
-  the owner's naming and the audit does NOT flag it; the zatcaReact repo's
-  application-status feature was moved to the reviewer's naming on the PR branch only.
-  This divergence is intentional and needs an owner decision to settle.
+  **Interface-folder layout unchanged and now CONFIRMED settled** (`data/IServices` +
+  `domain/IRepositories`). The owner clarified what the PR #305 comment actually asked
+  for: the reviewer's point was the LAYER — "the service should be inside the data
+  directory not domain" — not the folder name. v1.13.0 already satisfies it: the service
+  contract sits in `data/IServices/` (data layer, as the reviewer required) with the
+  owner's `IServices`/`IRepositories` naming. Nothing to change in the skill; the
+  zatcaReact application-status feature was corrected to this same layout on the PR
+  branch. Reviewer comments asking for `data/services`/`domain/repositories` as NAMES are
+  answered by the naming decision and need no further action.
