@@ -1940,18 +1940,37 @@ if (require.main === module) {
     process.exit(main());
 }
 
-const SKILL_VERSION = '1.14.0';
+const SKILL_VERSION = '1.14.1';
 
 /**
- * On-disk directory for a feature name. New features are kebab-case
- * (`src/features/application-status`), but pre-1.14.0 features are PascalCase,
- * so lifecycle scripts must accept whichever actually exists. Returns the
- * kebab name when neither is present (the name a fresh scaffold would create).
+ * On-disk directory for a feature name, RELATIVE to src/features (may contain a
+ * separator). New features are kebab-case (`src/features/application-status`),
+ * but pre-1.14.0 features are PascalCase, and some live one level down inside a
+ * category directory (`Signup/EstablishmentSignup`,
+ * `verificationFeatures/TaxStampValidation`) — SKILL.md Step 1 requires the
+ * existence check to scan that level too. A resolution that misses the real
+ * directory is worse than no check at all: every path-based audit check then
+ * inspects an empty path and PASSes vacuously (live finding 2026-08-23,
+ * EstablishmentSignup). Returns the kebab name when nothing is present (the
+ * name a fresh scaffold would create).
  */
 function resolveFeatureDir(repo, feature) {
+    const featuresDir = path.join(repo, 'src', 'features');
     const candidates = [kebab(feature), pascal(feature)];
     for (const candidate of candidates) {
-        if (fs.existsSync(path.join(repo, 'src', 'features', candidate))) return candidate;
+        if (fs.existsSync(path.join(featuresDir, candidate))) return candidate;
+    }
+    // one level of category nesting; a category dir is one that holds no
+    // feature layer of its own (no data/ or domain/ child)
+    if (fs.existsSync(featuresDir)) {
+        for (const entry of fs.readdirSync(featuresDir, { withFileTypes: true })) {
+            if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+            const categoryPath = path.join(featuresDir, entry.name);
+            if (fs.existsSync(path.join(categoryPath, 'data')) || fs.existsSync(path.join(categoryPath, 'domain'))) continue;
+            for (const candidate of candidates) {
+                if (fs.existsSync(path.join(categoryPath, candidate))) return `${entry.name}/${candidate}`;
+            }
+        }
     }
     return candidates[0];
 }

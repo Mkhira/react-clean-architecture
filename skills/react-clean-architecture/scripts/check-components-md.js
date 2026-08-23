@@ -20,6 +20,7 @@
  *
  * Usage:
  *   node check-components-md.js [--repo <path>] [--doc <path>] [--strict]
+ *   node check-components-md.js --help
  *       --doc defaults to the skill's own COMPONENTS.md
  *       --strict: exit 1 on any DRIFT/STALE (default always exits 0 — the
  *                 audit surfaces this as a WARN, not a FAIL)
@@ -28,6 +29,19 @@
 
 const fs = require('fs');
 const path = require('path');
+
+const HELP = `check-components-md.js — COMPONENTS.md drift detector (detection only).
+
+Usage:
+  node check-components-md.js [--repo <path>] [--doc <path>] [--strict]
+      --repo <path>   the app repo to scan (default: cwd)
+      --doc <path>    the dictionary to check (default: the skill's COMPONENTS.md)
+      --strict        exit 1 on any DRIFT/STALE (default: always 0 — the audit
+                      surfaces this as a WARN, not a FAIL)
+  node check-components-md.js --help
+
+DRIFT = repo component with no \`### <Name>\` entry · STALE = entry matching no
+component. Exit 2 = the doc or src/shared/components could not be read.`;
 
 const BUCKETS = ['atoms', 'molecules', 'organisms'];
 
@@ -87,6 +101,10 @@ function diffComponentsDoc(components, headings) {
 
 function main() {
     const argv = process.argv.slice(2);
+    if (argv.includes('--help') || argv.includes('-h')) {
+        console.log(HELP);
+        return 0;
+    }
     const repoIndex = argv.indexOf('--repo');
     const docIndex = argv.indexOf('--doc');
     const repo = repoIndex >= 0 ? path.resolve(argv[repoIndex + 1]) : process.cwd();

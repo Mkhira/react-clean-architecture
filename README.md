@@ -2,7 +2,7 @@
 
 > An [Agent Skill](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview) that scaffolds **complete clean-architecture features** in a React Native (Expo) app from a single curl paste — and builds their **pixel-accurate screens from Figma**, verified live on the iOS simulator.
 
-![version](https://img.shields.io/badge/version-1.14.0-blue) ![tests](https://img.shields.io/badge/tests-147%20passing-brightgreen) ![deps](https://img.shields.io/badge/dependencies-zero-lightgrey) ![node](https://img.shields.io/badge/node-%E2%89%A518-339933) ![license](https://img.shields.io/badge/license-MIT-yellow)
+![version](https://img.shields.io/badge/version-1.14.1-blue) ![tests](https://img.shields.io/badge/tests-149%20passing-brightgreen) ![deps](https://img.shields.io/badge/dependencies-zero-lightgrey) ![node](https://img.shields.io/badge/node-%E2%89%A518-339933) ![license](https://img.shields.io/badge/license-MIT-yellow)
 
 Works with **Claude Code**, **Cursor**, **OpenAI Codex CLI**, and any agent that reads `AGENTS.md` / Markdown skills. One [install script](#install), three tools.
 
@@ -225,11 +225,11 @@ The agent walks the checklist in [SKILL.md](skills/react-clean-architecture/SKIL
 | `scripts/rename-feature.js` | rename across code/DI/i18n/config/env via derived identifiers only |
 | `scripts/migrate-feature.js` | upgrade machine-owned files to current templates; hand-written code preserved |
 
-Paths are relative to [`skills/react-clean-architecture/`](skills/react-clean-architecture/). All scripts run on plain Node ≥ 18 (stdlib only), take `--repo <root>` when they touch the app, and print usage with `--help` (except `check-components-md.js` and `setup-test-infra.js`, whose only flags are the ones listed above).
+Paths are relative to [`skills/react-clean-architecture/`](skills/react-clean-architecture/). All scripts run on plain Node ≥ 18 (stdlib only), take `--repo <root>` when they touch the app, and print usage with `--help`.
 
 ## Testing the skill itself
 
-147 tests on Node's built-in runner — still zero dependencies:
+149 tests on Node's built-in runner — still zero dependencies:
 
 ```bash
 node --test skills/react-clean-architecture/tests/*.test.js

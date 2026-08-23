@@ -154,3 +154,29 @@ test('listHeadings tokenizes slash lists and PascalCase parenthetical aliases', 
 test('listComponents returns null when the repo has no shared components tree', () => {
     assert.equal(listComponents(makeTmpDir('empty')), null);
 });
+
+// -------------------------------------------------------------- --help ------
+// v1.14.1: both scripts used to ignore --help and run their real work against
+// the cwd instead — which is the skill's own scripts/ dir when someone is just
+// asking for usage. Usage must print and NOTHING must be touched.
+
+test('setup-test-infra.js --help prints usage instead of inspecting a repo', () => {
+    const repo = makeTmpDir('help-infra'); // no package.json → exit 2 without --help
+    for (const flag of ['--help', '-h']) {
+        const result = runScript('setup-test-infra.js', ['--repo', repo, flag]);
+        assert.equal(result.status, 0, result.stderr);
+        assert.match(result.stdout, /Usage:\s+node setup-test-infra\.js/);
+        assert.equal(result.stderr, '');
+    }
+    assert.equal(exists(repo, 'jest.setup.js'), false);
+});
+
+test('check-components-md.js --help prints usage instead of scanning a repo', () => {
+    const repo = makeTmpDir('help-doc'); // no src/shared/components → exit 2 without --help
+    for (const flag of ['--help', '-h']) {
+        const result = runScript('check-components-md.js', ['--repo', repo, flag]);
+        assert.equal(result.status, 0, result.stderr);
+        assert.match(result.stdout, /Usage:\s+node check-components-md\.js/);
+        assert.equal(result.stderr, '');
+    }
+});

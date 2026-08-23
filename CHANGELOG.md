@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.14.1 — register-di import paths + `--help` everywhere
+
+**Fix — `register-di.js` wrote unresolvable interface imports.** Found by an end-to-end run
+against the real app, not the unit suite: the `tokens.ts` imports still pointed at the
+pre-1.13.0 locations (`data/services/I<F>Service`, `domain/repositories/I<F>Repository`)
+while `generate.js` creates `data/IServices/` + `domain/IRepositories/`, so every freshly
+scaffolded feature failed `tsc` with two "Cannot find module" errors. Paths fixed, and the
+gap that let it through — the DI tests asserted on token names but never that the import
+paths resolve to files `generate.js` really creates — is now covered by a test that fails on
+the bug. A full generate + register-di in the app adds zero type errors (44 before, 44 after).
+
+**`--help` on every script.** `check-components-md.js` and `setup-test-infra.js` were the two
+that ignored it and ran their real work instead (against the cwd, which is the skill's own
+scripts/ directory when someone is just asking for usage). Both now print usage and exit 0
+for `--help`/`-h`, matching the other ten.
+
+Docs synced with the code in the same pass: README (v1.8.0-era feature tree, "20+ checks",
+error taxonomy, missing compaction checkpoints), `<Feature>` → `<feature-dir>` placeholders
+across AUDIT/APPEND/SKILL/SPEC_FORMAT, audit flag list, and the plugin manifests, which had
+been stale at 1.8.0 for six releases.
+
+Suite 149/149. SKILL_VERSION → 1.14.1.
+
 ## 1.14.0 — PR #305 review-round hardening
 
 The second review round on PR #305 produced 41 comments. The mechanical causes are now
@@ -39,18 +62,6 @@ contract is a data-layer port in `data/IServices/`. The folder NAMES stay per th
 standing owner decision.
 
 Suite 146/146. SKILL_VERSION → 1.14.0.
-
-### 1.14.0 follow-up — register-di interface import paths
-
-Found by an end-to-end run against the real app, not the unit suite: `register-di.js` still
-wrote the `tokens.ts` imports against the pre-1.13.0 locations (`data/services/I<F>Service`,
-`domain/repositories/I<F>Repository`) while `generate.js` creates `data/IServices/` +
-`domain/IRepositories/`, so every freshly scaffolded feature failed `tsc` with two
-"Cannot find module" errors. Paths fixed, and the gap that let it through — the DI tests
-asserted on token names but never that the import paths resolve to files `generate.js`
-really creates — is now covered by a test that fails on the bug. A full generate +
-register-di in the app adds zero type errors (44 before, 44 after). Suite 147/147; no
-SKILL_VERSION bump (generated output is unchanged).
 
 ## 1.13.0 — final interface layout: data/IServices + domain/IRepositories
 

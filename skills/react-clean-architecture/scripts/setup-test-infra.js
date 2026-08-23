@@ -17,6 +17,7 @@
  *
  * Usage:
  *   node setup-test-infra.js [--repo <path>] [--check]
+ *   node setup-test-infra.js --help
  *       --check: report only (no install, no writes); exit 1 when something
  *                is missing. Used by docs/audit guidance.
  *
@@ -32,6 +33,24 @@ const { spawnSync } = require('child_process');
 
 const PACKAGE = '@testing-library/react-native';
 const SETUP_FILE = 'jest.setup.js';
+
+const HELP = `setup-test-infra.js — make render tests possible in the target repo.
+
+Ensures, idempotently: ${PACKAGE} is a devDependency
+(installed with the repo's own package manager), ${SETUP_FILE} exists at the
+repo root (an existing one is never touched), and jest is wired to it via
+setupFilesAfterEnv.
+
+Usage:
+  node setup-test-infra.js [--repo <path>] [--check]
+      --repo <path>   the app repo (default: cwd)
+      --check         report only — no install, no writes; exit 1 when
+                      something is missing
+  node setup-test-infra.js --help
+
+Prints a JSON report. Exit codes: 0 = ready, 1 = check-mode gaps, 2 =
+install/wiring failed (the run continues with logic-level tests — say so in the
+final report).`;
 
 const STARTER_SETUP = `/**
  * Jest setup — native-module mocks so presentation/component render tests
@@ -95,6 +114,10 @@ function setupWired(repo, pkgJson, location) {
 
 function main() {
     const argv = process.argv.slice(2);
+    if (argv.includes('--help') || argv.includes('-h')) {
+        console.log(HELP);
+        return 0;
+    }
     const repoIndex = argv.indexOf('--repo');
     const repo = repoIndex >= 0 ? path.resolve(argv[repoIndex + 1]) : process.cwd();
     const checkOnly = argv.includes('--check');
