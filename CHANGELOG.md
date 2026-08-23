@@ -40,6 +40,18 @@ standing owner decision.
 
 Suite 146/146. SKILL_VERSION → 1.14.0.
 
+### 1.14.0 follow-up — register-di interface import paths
+
+Found by an end-to-end run against the real app, not the unit suite: `register-di.js` still
+wrote the `tokens.ts` imports against the pre-1.13.0 locations (`data/services/I<F>Service`,
+`domain/repositories/I<F>Repository`) while `generate.js` creates `data/IServices/` +
+`domain/IRepositories/`, so every freshly scaffolded feature failed `tsc` with two
+"Cannot find module" errors. Paths fixed, and the gap that let it through — the DI tests
+asserted on token names but never that the import paths resolve to files `generate.js`
+really creates — is now covered by a test that fails on the bug. A full generate +
+register-di in the app adds zero type errors (44 before, 44 after). Suite 147/147; no
+SKILL_VERSION bump (generated output is unchanged).
+
 ## 1.13.0 — final interface layout: data/IServices + domain/IRepositories
 
 User decision (2026-08-23), settling the back-and-forth of 1.11.0/1.12.0: the PR #305

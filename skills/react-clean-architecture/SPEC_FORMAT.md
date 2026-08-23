@@ -2,14 +2,14 @@
 
 The single input to `generate.js`, `register-di.js`, and `audit.js`. Claude writes it after the
 interactive intake; `audit.js --persist-spec` later stores a **sanitized** copy (secrets
-replaced by `<env:KEY>` references) at `src/features/<Feature>/feature-spec.json` for append
+replaced by `<env:KEY>` references) at `src/features/<feature-dir>/feature-spec.json` for append
 mode and documentation.
 
 ## Top level
 
 | Field | Type | Notes |
 |---|---|---|
-| `feature` | string | PascalCase. Grep `tokens.ts`/`container.ts` for collisions first |
+| `feature` | string | PascalCase — the identifier, not the path. The directory is derived kebab-case (`ProductVerification` → `src/features/product-verification`); append/lifecycle scripts resolve a legacy PascalCase directory when one exists. Grep `tokens.ts`/`container.ts` for collisions first |
 | `mode` | `"create"` \| `"append"` | append = feature dir already exists (anchors expected) |
 | `mock` | boolean (optional) | `true` = the real backend doesn't exist yet: generate.js additionally emits `data/services/<Feature>MockService.ts` (sample DTOs through the REAL mappers) and register-di.js registers **it** for `TOKENS.<Feature>Service` with a swap comment. The real service class is still generated for the later swap. Set it when the user says "mock backend" / "API not ready" (SKILL.md Step 2) |
 | `appHost` | string | `EXPO_PUBLIC_API_URL` as read from `.env.development` at spec time |
@@ -33,7 +33,7 @@ mode and documentation.
 | `responseSample` | object \| array \| null | raw pasted JSON; `[…]` = top-level array; null = "none" → `Result<void, E>` |
 | `typeOverrides` | map | answers to ambiguity questions — see below |
 | `dateFields` | string[] | dot-paths formatted with `formatNumericGregorianDate` in the mapper |
-| `statusEnum` | `{field, values[]}` \| null | emits the union type; the DERIVATION is hand-written (TODO in mapper, audit-enforced) |
+| `statusEnum` | `{field, values[]}` \| null | emits `domain/constants/<featureCamel>.ts` (the one source for the value list — the entity derives its union from it) ; the DERIVATION is hand-written (TODO in mapper, audit-enforced) |
 | `userStory` | string \| null | kept as doc comment; drives rules + Arabic strings |
 | `rules` | string[] | short rule statements → TODO bullets in the use case + tests |
 | `cache` | duration \| `"always-fresh"` \| null | GET only, asked per endpoint during intake. **Two cache layers exist** — a duration (`"6-hours"` \| `"8-hours"` \| `"12-hours"` \| `"24-hours"` \| `"2-days"` \| `"1-week"`) enables the PERSISTENT device cache (`useApiQuery` `storeDuration`, survives restarts); omit/null disables only that — react-query's app-wide IN-MEMORY defaults (staleTime 5 min) still apply; `"always-fresh"` emits `staleTime: 0` so every mount/param-change refetches (pick for lists whose server state changes between visits, e.g. "my requests") |

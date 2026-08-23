@@ -3,10 +3,10 @@
 Read this when Step 1 finds the feature already exists and the mode answer routes to an
 endpoint append (backend/full). Design append (add/rework ONE screen) is DESIGN.md §6.
 
-`audit.js --persist-spec` leaves `src/features/<Feature>/feature-spec.json` — load it FIRST for
+`audit.js --persist-spec` leaves `src/features/<feature-dir>/feature-spec.json` — load it FIRST for
 full prior context (host types, provenance, enums) without re-asking.
 
-**User story in append mode:** check `src/features/<Feature>/userStory/` right after loading
+**User story in append mode:** check `src/features/<feature-dir>/userStory/` right after loading
 the spec. Story file(s) exist → at the story point of the intake sequence ask ONE question:
 "use the existing story (<file names>) for the new endpoint(s), or write a new one?" (reading
 the existing file(s) first so the reuse offer is informed). No directory → ask the usual

@@ -6,6 +6,10 @@ Run `node <skill>/scripts/audit.js --baseline` BEFORE generation (snapshots exis
 
 Exit 0 = PASS (warnings allowed) · exit 1 = FAIL. Max **3 fix-cycles**, then stop and report.
 
+Flags: `--repo <path>` (default: cwd) · `--persist-spec` · `--skip-tsc` · `--skip-jest` · `--help`.
+Skipping tsc or jest is for debugging a single check — never for the run that signs the
+feature off.
+
 | Check | Level | Meaning / fix |
 |---|---|---|
 | `structure` | FAIL | Every file `generate.js` should have produced exists. Missing → re-run generate (it never overwrites, so re-running is safe) |
@@ -22,11 +26,11 @@ Exit 0 = PASS (warnings allowed) · exit 1 = FAIL. Max **3 fix-cycles**, then st
 | `review-conventions` | FAIL | The conventions PR reviewers enforce by hand (all from real review rounds): the feature directory is kebab-case; no dead pre-1.11.0 directories (`domain/usecases/`, `domain/IServices/`) — note the current interface layout `data/IServices/` + `domain/IRepositories/` is the owner's standing decision and is NOT flagged; the feature error type does not widen `AppError` (no `Omit<AppError,'code'>`, no invented `HTTP_ERROR`/`PARSE_ERROR`); no enum literal array repeated across files (move it to `domain/constants/`); no raw numbers or RN keyword strings in a `styles.ts` (use theme tokens, adding one to `baseStyles.ts` + the `Theme` type if it is missing); no presentation module that nothing imports. Fix the code — never silence the check |
 | `components-md` | WARN | COMPONENTS.md drift: a `src/shared/components` component with no dictionary entry (DRIFT) or an entry matching no component (STALE) — write/fix the entry so the reuse gate stays complete (`node <skill>/scripts/check-components-md.js` for details) |
 | `tsc-diff` | FAIL | `npx tsc --noEmit` compared against the baseline — only NEW errors fail, matched by file+code+message (line/column shifts of baseline errors are ignored). No baseline file → warns and treats all errors as new |
-| `jest` | FAIL | `npx jest src/features/<Feature> --watchAll=false --passWithNoTests` — suites must be green; 0 tests ran → WARN |
+| `jest` | FAIL | `npx jest src/features/<feature-dir> --watchAll=false --passWithNoTests` — suites must be green; 0 tests ran → WARN |
 
 ## After PASS
 
-- `--persist-spec` writes the **sanitized** spec to `src/features/<Feature>/feature-spec.json`
+- `--persist-spec` writes the **sanitized** spec to `src/features/<feature-dir>/feature-spec.json`
   (header values → `<env:KEY>`, devValues → `<env:KEY>`, session values → `<session>`).
   Grep it — it must contain no real secret values before committing. On an APPEND run the
   new endpoints are MERGED into the already-persisted spec (keyed by action; the `design`

@@ -2,7 +2,7 @@
 
 > An [Agent Skill](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview) that scaffolds **complete clean-architecture features** in a React Native (Expo) app from a single curl paste — and builds their **pixel-accurate screens from Figma**, verified live on the iOS simulator.
 
-![version](https://img.shields.io/badge/version-1.8.0-blue) ![tests](https://img.shields.io/badge/tests-135%20passing-brightgreen) ![deps](https://img.shields.io/badge/dependencies-zero-lightgrey) ![node](https://img.shields.io/badge/node-%E2%89%A518-339933) ![license](https://img.shields.io/badge/license-MIT-yellow)
+![version](https://img.shields.io/badge/version-1.14.0-blue) ![tests](https://img.shields.io/badge/tests-147%20passing-brightgreen) ![deps](https://img.shields.io/badge/dependencies-zero-lightgrey) ![node](https://img.shields.io/badge/node-%E2%89%A518-339933) ![license](https://img.shields.io/badge/license-MIT-yellow)
 
 Works with **Claude Code**, **Cursor**, **OpenAI Codex CLI**, and any agent that reads `AGENTS.md` / Markdown skills. One [install script](#install), three tools.
 
@@ -13,11 +13,11 @@ Works with **Claude Code**, **Cursor**, **OpenAI Codex CLI**, and any agent that
 Paste a curl. The skill interviews you (one question per message), writes a small `feature-spec.json`, and then **deterministic Node scripts** — not the LLM — generate every file, wire the DI container, i18n, react-query keys, config and env files, and audit the result against a TypeScript baseline and Jest.
 
 ```
-src/features/<Feature>/
+src/features/<feature-dir>/          kebab-case directory; identifiers stay PascalCase
 ├── data/          dtos · endpoints · mappers · IServices (contract) · service · repository
-├── domain/        entities · errors · IRepositories · use-cases
-├── presentation/  screens + controllers · styles · queries · translations (en/ar)
-├── test/          mapper + use-case Jest suites (+ render tests in the design lane)
+├── domain/        entities · constants (when an endpoint has a statusEnum) · errors · IRepositories · use-cases
+├── presentation/  screens + controller · styles · queries · translations (en/ar) · components · utils
+├── test/          mapper + use-case Jest suites (+ design-lane render tests) — or __tests__/
 └── feature-spec.json   (sanitized, persisted — powers append/remove/rename/migrate)
 ```
 
@@ -37,7 +37,7 @@ flowchart LR
     D --> E["generate.js<br/>all feature files"]
     E --> F["hand-written<br/>use-case rules"]
     F --> G["register-di.js<br/>DI · i18n · config · env"]
-    G --> H["audit.js<br/>tsc diff · jest · 20+ checks"]
+    G --> H["audit.js<br/>tsc diff · jest · 15 checks"]
     H -->|pass| I["persisted spec<br/>append-ready"]
     H -->|fail| F
 ```
@@ -92,9 +92,19 @@ flowchart TB
 
 The dependency rule is **enforced, not aspirational**: `domain/` never imports `data/` (DTOs
 stay behind `mapper.toDTO` inside the service — interfaces take domain inputs), and the audit's
-FAIL-level `arch-boundaries` check blocks any hand-edit that crosses a layer. Use-case errors
-carry a real taxonomy (`AUTH_ERROR`, `TIMEOUT`, `VALIDATION_ERROR`, …) instead of collapsing
-every failure to `NETWORK_ERROR`.
+FAIL-level `arch-boundaries` check blocks any hand-edit that crosses a layer.
+
+Use cases classify transport failures across the app-wide `AppError` codes (`AUTH_ERROR`,
+`TIMEOUT`, `VALIDATION_ERROR`, `NETWORK_ERROR`) instead of collapsing everything to
+`NETWORK_ERROR` — the feature error type reuses `AppError` as-is rather than widening it or
+inventing feature-local codes. Every use case takes an `ILogger` and logs the exception before
+returning `Result.err`, and a declared `statusEnum` becomes `domain/constants/<featureCamel>.ts`, the
+one source the entity, mappers, mock catalogs and filter options all import.
+
+The conventions PR reviewers used to catch by hand are a FAIL-level **`review-conventions`**
+audit check: kebab-case feature directory, no dead pre-1.11 folders, no widened `AppError`, no
+enum literal array retyped across files, theme tokens only in `styles.ts`, no presentation
+module nothing imports.
 
 ---
 
@@ -134,7 +144,7 @@ cd react-clean-architecture
 | **Codex CLI** | `./install.sh codex` → `~/.codex/skills/` + `~/.codex/AGENTS.md` | `./install.sh codex --project <app>` (+ `AGENTS.md` block) |
 | Any `AGENTS.md` agent | — | `./install.sh agents --project <app>` |
 
-Re-running is safe: symlinks are refreshed, copies are replaced, and `AGENTS.md` blocks are updated between markers instead of duplicated. Every `install.sh` target also runs the [touch-tools step](#simulator-touch-tools-idb) automatically (`--no-tools` skips it).
+Re-running is safe: symlinks are refreshed, copies are replaced, and `AGENTS.md` blocks are updated between markers instead of duplicated. `--copy` copies instead of symlinking (Claude target; the others always copy). Every `install.sh` target also runs the [touch-tools step](#simulator-touch-tools-idb) automatically (`--no-tools` skips it).
 
 ### Simulator touch tools (idb)
 
@@ -175,9 +185,9 @@ or before the backend exists:
 
 or for screens only:
 
-> `/react-clean-architecture` I need to append on src/features/TaxStampValidation — design mode only
+> `/react-clean-architecture` I need to append on src/features/tax-stamp-validation — design mode only
 
-The agent walks the checklist in [SKILL.md](skills/react-clean-architecture/SKILL.md): intake → test-infra check (auto-installs `@testing-library/react-native` on first run) → confirmation tables → generate → register → audit → (design lane) → final report. Appending an endpoint or a screen to a feature the skill built earlier is automatic — the persisted spec provides full prior context, no re-asking. The mock-backend lane generates a `MockService` behind the real service interface; swapping to the live API later is a one-line DI change (the swap comment is generated with it).
+The agent walks the checklist in [SKILL.md](skills/react-clean-architecture/SKILL.md): intake → test-infra check (auto-installs `@testing-library/react-native` on first run) → confirmation tables → generate → register → audit → (design lane) → final report. At three points — after the intake confirmation, after each per-screen checkpoint, and after the audit passes — it pauses and asks you to run your host's compaction command (`/compact`, `/summarize`, …); everything needed to resume is on disk before the pause, so a long run never depends on chat history. Appending an endpoint or a screen to a feature the skill built earlier is automatic — the persisted spec provides full prior context, no re-asking. The mock-backend lane generates a `MockService` behind the real service interface; swapping to the live API later is a one-line DI change (the swap comment is generated with it).
 
 ---
 
@@ -185,7 +195,7 @@ The agent walks the checklist in [SKILL.md](skills/react-clean-architecture/SKIL
 
 | Doc | Contents |
 |---|---|
-| [SKILL.md](skills/react-clean-architecture/SKILL.md) | the agent's entry point — workflow router, progress checklist, intake protocol |
+| [SKILL.md](skills/react-clean-architecture/SKILL.md) | the agent's entry point — workflow router, progress checklist, intake protocol, review conventions, compaction checkpoints |
 | [DESIGN.md](skills/react-clean-architecture/DESIGN.md) | design lane: screen collection, Figma → screens → simulator verification loop, RTL ground rules, navigation registration |
 | [APPEND.md](skills/react-clean-architecture/APPEND.md) | endpoint-append lane: persisted-spec reuse, behavior table, append user-story rule |
 | [LIFECYCLE.md](skills/react-clean-architecture/LIFECYCLE.md) | remove / rename / migrate a skill-generated feature |
@@ -207,7 +217,7 @@ The agent walks the checklist in [SKILL.md](skills/react-clean-architecture/SKIL
 | `scripts/generate.js` | spec → every feature file (validates spec; never overwrites; append via anchors) |
 | `scripts/register-di.js` | DI + i18n + config + 6 env files, idempotent |
 | `scripts/register-navigation.js` | design lane's navigation registration (routes, page registry, SERVICES_DATA, deep links, translations placeholders), idempotent |
-| `scripts/audit.js` | tsc-baseline diff · jest · arch-boundaries · structure/DI/env/secret checks (`--baseline`, `--persist-spec`) |
+| `scripts/audit.js` | 15 checks — tsc-baseline diff · jest · arch-boundaries · review-conventions · COMPONENTS.md drift · structure/DI/i18n/env/secret (`--baseline`, `--persist-spec`) |
 | `scripts/rollback.js` | manifest-scoped undo — dry-run plan, `--apply` to execute |
 | `scripts/setup-test-infra.js` | auto-installs `@testing-library/react-native`, creates/wires `jest.setup.js` (`--check` for report-only) |
 | `scripts/check-components-md.js` | COMPONENTS.md drift detector — DRIFT/STALE vs `src/shared/components` (`--strict`) |
@@ -215,11 +225,11 @@ The agent walks the checklist in [SKILL.md](skills/react-clean-architecture/SKIL
 | `scripts/rename-feature.js` | rename across code/DI/i18n/config/env via derived identifiers only |
 | `scripts/migrate-feature.js` | upgrade machine-owned files to current templates; hand-written code preserved |
 
-Paths are relative to [`skills/react-clean-architecture/`](skills/react-clean-architecture/). All scripts run on plain Node ≥ 18 (stdlib only) and support `--help`.
+Paths are relative to [`skills/react-clean-architecture/`](skills/react-clean-architecture/). All scripts run on plain Node ≥ 18 (stdlib only), take `--repo <root>` when they touch the app, and print usage with `--help` (except `check-components-md.js` and `setup-test-infra.js`, whose only flags are the ones listed above).
 
 ## Testing the skill itself
 
-135 tests on Node's built-in runner — still zero dependencies:
+147 tests on Node's built-in runner — still zero dependencies:
 
 ```bash
 node --test skills/react-clean-architecture/tests/*.test.js
@@ -229,7 +239,7 @@ Unit suites cover the parsers, generation scenarios (create/append/never-overwri
 
 ## Requirements
 
-- A repo following the zatcaReact conventions: tsyringe `TOKENS`/`TokenRegistry`, `Result<T, E>`, `AppError`-style typed errors, `IHttpClient`, i18next `featureTranslations`, `@core`/`@features`/`@shared` path aliases, jest-expo.
+- A repo following the zatcaReact conventions: tsyringe `TOKENS`/`TokenRegistry`, `Result<T, E>`, the `AppError` code union in `src/shared/types/errors.ts`, `IHttpClient`, `@core/logging/ILogger`, `@domain/shared/IUseCase`, i18next `featureTranslations`, `@core`/`@features`/`@shared`/`@domain` path aliases, jest-expo.
 - Node ≥ 18. The design lane additionally needs the Figma MCP server and a booted iOS simulator.
 - `install.sh` also auto-installs **idb** for tap-driven simulator verification (Homebrew tap
   `facebook/fb`, or the prebuilt GitHub-release companion when Homebrew is absent — Homebrew

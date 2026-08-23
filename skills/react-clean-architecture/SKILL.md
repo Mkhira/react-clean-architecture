@@ -255,7 +255,7 @@ doc comment on the use case(s). Skipped → pass-through + `// TODO`. NEVER inve
 silently: made-up validation is worse than none. Arabic strings in the story flow into
 `translations/ar.ts`.
 
-**userStory/ directory:** story given → create `src/features/<Feature>/userStory/` and save
+**userStory/ directory:** story given → create `src/features/<feature-dir>/userStory/` and save
 the FULL story text verbatim as one `.md` file per story, named by its story ID when it has
 one (e.g. `ERD-PBM-001.md`); no ID → sequential fallback (`userStory-1.md`, `userStory-2.md`,
 …). Story skipped → do NOT create the directory. In append mode a new story gets its OWN file
