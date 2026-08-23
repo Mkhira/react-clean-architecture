@@ -181,8 +181,8 @@ function updateTokens(repo, f) {
     }
 
     const imports = [
-        `import type { ${f.serviceInterface} } from '@features/${f.featureDir}/data/services/${f.serviceInterface}';`,
-        `import type { ${f.repositoryInterface} } from '@features/${f.featureDir}/domain/repositories/${f.repositoryInterface}';`,
+        `import type { ${f.serviceInterface} } from '@features/${f.featureDir}/data/IServices/${f.serviceInterface}';`,
+        `import type { ${f.repositoryInterface} } from '@features/${f.featureDir}/domain/IRepositories/${f.repositoryInterface}';`,
         `import type { ${f.errorType} } from '@features/${f.featureDir}/domain/errors/${f.errorType}';`,
     ];
     for (const e of f.endpoints) {

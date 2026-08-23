@@ -1,7 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { makeTmpDir, makeFixtureRepo, baseSpec, writeSpec, runScript, read } = require('./helpers.js');
+const { makeTmpDir, makeFixtureRepo, baseSpec, writeSpec, runScript, read, exists } = require('./helpers.js');
 
 function registeredFixture(spec = baseSpec()) {
     const repo = makeFixtureRepo();
@@ -133,4 +133,26 @@ test('internal/BFF reuse (configField without envKey): no env keys, no config fi
     const { repo } = registeredFixture(spec);
     assert.ok(!read(repo, '.env.development').includes('ORDER_TRACKING'));
     assert.ok(!read(repo, 'src/core/config/IConfigService.ts').includes('orderTracking'));
+});
+
+/**
+ * Regression: register-di.js writes tokens.ts imports for the service and
+ * repository INTERFACES, and those paths must match the directories
+ * generate.js actually creates. A drift between the two (it happened once when
+ * the interface layout was changed in generate.js only) produces a repo that
+ * fails tsc with "Cannot find module", which no other test caught because they
+ * assert on token names rather than import paths.
+ */
+test('tokens.ts interface imports resolve to files generate.js really creates', () => {
+    const { repo } = registeredFixture();
+    const tokens = read(repo, 'src/core/di/tokens.ts');
+
+    const imports = [...tokens.matchAll(/^import type \{ (I\w+) \} from '@features\/([^']+)';$/gm)]
+        .filter(([, name]) => name === 'IOrderTrackingService' || name === 'IOrderTrackingRepository');
+    assert.equal(imports.length, 2, 'both interface imports present');
+
+    for (const [line, name, specifier] of imports) {
+        const relative = `src/features/${specifier}.ts`;
+        assert.ok(exists(repo, relative), `${name}: ${line.trim()} points at ${relative}, which generate.js did not create`);
+    }
 });
