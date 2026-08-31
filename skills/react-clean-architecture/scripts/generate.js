@@ -134,6 +134,10 @@ function featureModel(spec) {
         // registers IT in the container, with a swap comment for later
         mock: spec.mock === true,
         mockServiceClass: `${feature}MockService`,
+        // spec opt-out for a feature whose on-disk directory deliberately stays
+        // off the kebab convention (pre-1.14.0 name, or a category subdirectory
+        // like Signup/EstablishmentSignup) — see audit.js review-conventions
+        legacyDir: spec.legacyDir === true,
         serviceClass: `${feature}Service`,
         repositoryClass: `${feature}Repository`,
         serviceInterface: `I${feature}Service`,
@@ -1940,7 +1944,7 @@ if (require.main === module) {
     process.exit(main());
 }
 
-const SKILL_VERSION = '1.14.1';
+const SKILL_VERSION = '1.14.2';
 
 /**
  * On-disk directory for a feature name, RELATIVE to src/features (may contain a

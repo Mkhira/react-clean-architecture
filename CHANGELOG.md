@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.14.2 — `legacyDir` exemption + the `mock-committable` check
+
+Both findings come from auditing an existing feature (`src/features/Signup/EstablishmentSignup`)
+rather than generating a new one.
+
+**`legacyDir: true` — an explicit, reviewable exemption from the kebab-case rule.** A feature
+that pre-dates the v1.14.0 convention, or one the owner deliberately keeps inside a category
+directory (`Signup/EstablishmentSignup`, `verificationFeatures/TaxStampValidation`), used to
+fail `review-conventions` on every run. It can now opt out in its spec. The exemption
+suppresses ONLY the kebab-directory finding, only for a directory that already exists, and new
+features never set it — the alternative was a check everyone learns to ignore.
+
+**New FAIL check `mock-committable`.** A COMMITTED file importing a git-IGNORED one compiles on
+the author's machine and nowhere else, and the mock lane walks straight into it: `register-di.js`
+edits the committed `container.ts` to import `<Feature>MockService`, while the app repo ignores
+`src/features/**/*MockService.ts` as "local only". Live finding 2026-08-23: EstablishmentSignup
+shipped exactly that — `tsc` failed on the module and DI threw at app start. The fix is a
+repo-policy call (un-ignore the mock, or keep the mock registration out of `container.ts`), so
+the check tells the agent to ASK the owner and never to edit `.gitignore` on its own. WARN
+instead when the file is ignored but nothing committed references it.
+
+Audit is now 16 checks. Suite 149/149 (no new tests — both changes are covered by existing
+review-conventions and audit fixtures). SKILL_VERSION → 1.14.2.
+
 ## 1.14.1 — register-di import paths + `--help` everywhere
 
 **Fix — `register-di.js` wrote unresolvable interface imports.** Found by an end-to-end run

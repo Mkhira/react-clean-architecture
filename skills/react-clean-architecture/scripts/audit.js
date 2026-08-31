@@ -414,8 +414,12 @@ function reviewConventionProblems(repo, f) {
     const base = path.join(repo, 'src', 'features', f.featureDir);
     const problems = [];
 
-    if (f.featureDir !== kebab(f.feature)) {
-        problems.push(`feature directory "${f.featureDir}" is not kebab-case — reviewers require src/features/${kebab(f.feature)} (run rename-feature.js)`);
+    // A feature that pre-dates the kebab convention, or that the owner
+    // deliberately keeps inside a category directory, opts out with
+    // `"legacyDir": true` in its spec — an explicit, reviewable exemption rather
+    // than a check everyone learns to ignore. New features never set it.
+    if (f.featureDir !== kebab(f.feature) && !f.legacyDir) {
+        problems.push(`feature directory "${f.featureDir}" is not kebab-case — reviewers require src/features/${kebab(f.feature)} (run rename-feature.js), or set "legacyDir": true in the spec to record a deliberate exemption`);
     }
     // NOTE: this skill deliberately uses data/IServices + domain/IRepositories —
     // the owner's standing naming decision (docs/decisions.md, v1.12.0/v1.13.0),
@@ -497,6 +501,46 @@ function reviewConventionProblems(repo, f) {
     }
 
     return problems;
+}
+
+/**
+ * A COMMITTED file importing a git-IGNORED one compiles on the author's machine
+ * and nowhere else. The mock lane walks straight into this: register-di.js edits
+ * the committed container.ts to import `<Feature>MockService`, while this repo's
+ * .gitignore excludes `src/features/**\/*MockService.ts` as "local only". Live
+ * finding 2026-08-23: EstablishmentSignup shipped exactly that — container.ts
+ * imported a module that no clone or CI run has, so `tsc` failed on the module
+ * and DI resolution threw at app start.
+ *
+ * FAIL-level: the app does not build for anyone else.
+ */
+function checkMockCommittable(repo, f) {
+    if (!f.mock) {
+        pass('mock-committable', 'not a mock-backend feature');
+        return;
+    }
+    const relative = `src/features/${f.featureDir}/data/services/${f.mockServiceClass}.ts`;
+    const absolute = path.join(repo, relative);
+    if (!fs.existsSync(absolute)) {
+        // the structure check already reports the missing file
+        pass('mock-committable', 'mock service missing (reported by structure)');
+        return;
+    }
+    const ignored = run('git', ['check-ignore', '-q', relative], repo).status === 0;
+    const container = path.join(repo, 'src', 'core', 'di', 'container.ts');
+    const referenced = fs.existsSync(container) && fs.readFileSync(container, 'utf8').includes(f.mockServiceClass);
+    if (ignored && referenced) {
+        fail(
+            'mock-committable',
+            `${relative} is git-ignored but the COMMITTED src/core/di/container.ts imports ${f.mockServiceClass} — ` +
+                `a fresh clone or CI run cannot compile. Either un-ignore the mock service, or keep the mock registration out of container.ts. ` +
+                `Ask the repo owner which; do not edit .gitignore on your own.`
+        );
+    } else if (ignored) {
+        warn('mock-committable', `${relative} is git-ignored — it exists only on this machine; anyone else re-generates it`);
+    } else {
+        pass('mock-committable', 'mock service is committable alongside its container registration');
+    }
 }
 
 /**
@@ -645,6 +689,7 @@ function main() {
     checkReuseFirst(repo, f);
     checkArchBoundaries(repo, f);
     checkReviewConventions(repo, f);
+    checkMockCommittable(repo, f);
     checkComponentsMd(repo);
     if (!argv.includes('--skip-tsc')) checkTscDiff(repo);
     if (!argv.includes('--skip-jest')) checkJest(repo, f);

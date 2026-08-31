@@ -217,7 +217,7 @@ The agent walks the checklist in [SKILL.md](skills/react-clean-architecture/SKIL
 | `scripts/generate.js` | spec → every feature file (validates spec; never overwrites; append via anchors) |
 | `scripts/register-di.js` | DI + i18n + config + 6 env files, idempotent |
 | `scripts/register-navigation.js` | design lane's navigation registration (routes, page registry, SERVICES_DATA, deep links, translations placeholders), idempotent |
-| `scripts/audit.js` | 15 checks — tsc-baseline diff · jest · arch-boundaries · review-conventions · COMPONENTS.md drift · structure/DI/i18n/env/secret (`--baseline`, `--persist-spec`) |
+| `scripts/audit.js` | 16 checks — tsc-baseline diff · jest · arch-boundaries · review-conventions · mock-committable · COMPONENTS.md drift · structure/DI/i18n/env/secret (`--baseline`, `--persist-spec`) |
 | `scripts/rollback.js` | manifest-scoped undo — dry-run plan, `--apply` to execute |
 | `scripts/setup-test-infra.js` | auto-installs `@testing-library/react-native`, creates/wires `jest.setup.js` (`--check` for report-only) |
 | `scripts/check-components-md.js` | COMPONENTS.md drift detector — DRIFT/STALE vs `src/shared/components` (`--strict`) |
