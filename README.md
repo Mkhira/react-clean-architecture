@@ -173,6 +173,27 @@ cp -R skills/react-clean-architecture ~/.claude/skills/
 
 `SKILL.md` carries standard Agent-Skills frontmatter (`name`, `description`), so any compatible runtime indexes it automatically.
 
+> **Copy the whole directory, never single files.** `SKILL.md` is a router: it defers the
+> intake protocol to `INTAKE.md`, review conventions to `REVIEW.md`, and the design, form and
+> component references to their own files, and it calls the scripts in `scripts/` by path. A
+> partial copy leaves it pointing at files that are not on disk.
+
+### Update
+
+The current release is **1.17.0** ([CHANGELOG](CHANGELOG.md)). How you update depends on how you installed:
+
+| Installed with | Update with |
+|---|---|
+| **Claude Code plugin** | `/plugin marketplace update react-clean-architecture` **then** `/plugin update react-clean-architecture` — the marketplace refresh comes first; it re-reads `marketplace.json` from GitHub, which is what carries the new version |
+| **`npx skills`** | re-run `npx skills@latest add Mkhira/react-clean-architecture` — same command as install, it overwrites in place |
+| **`install.sh`, symlinked** (the default for the Claude target) | nothing to do — `git pull` in your clone and the installed skill is already the new version |
+| **`install.sh --copy`, or the Cursor / Codex targets** (always copy) | `git pull`, then re-run the same `./install.sh <target>` you used originally |
+| **Manual copy** | `git pull`, then re-copy the **whole** `skills/react-clean-architecture/` directory |
+
+Updating never needs the [touch-tools step](#simulator-touch-tools-idb) again — `idb` is independent of the skill files.
+
+Not sure which version you have? `grep version <skill-dir>/../../.claude-plugin/plugin.json` for plugin installs, or check `SKILL_VERSION` in `scripts/generate.js`, which is also stamped into every `feature-spec.json` the skill persists.
+
 ### Usage
 
 Inside the target app repo, ask your agent:
@@ -195,7 +216,9 @@ The agent walks the checklist in [SKILL.md](skills/react-clean-architecture/SKIL
 
 | Doc | Contents |
 |---|---|
-| [SKILL.md](skills/react-clean-architecture/SKILL.md) | the agent's entry point — workflow router, progress checklist, intake protocol, review conventions, compaction checkpoints |
+| [SKILL.md](skills/react-clean-architecture/SKILL.md) | the agent's entry point — workflow router, progress checklist, mode selection, reuse gate, compaction checkpoints |
+| [INTAKE.md](skills/react-clean-architecture/INTAKE.md) | endpoint intake (Step 2): the one-question-per-message protocol, curl parsing, response capture, cache question, mock-backend lane, user story — backend/full modes only |
+| [REVIEW.md](skills/react-clean-architecture/REVIEW.md) | the conventions PR reviewers enforce, read before hand-writing anything (Step 4b) |
 | [DESIGN.md](skills/react-clean-architecture/DESIGN.md) | design lane: screen collection, Figma → screens → simulator verification loop, RTL ground rules, navigation registration |
 | [APPEND.md](skills/react-clean-architecture/APPEND.md) | endpoint-append lane: persisted-spec reuse, behavior table, append user-story rule |
 | [LIFECYCLE.md](skills/react-clean-architecture/LIFECYCLE.md) | remove / rename / migrate a skill-generated feature |
@@ -203,7 +226,7 @@ The agent walks the checklist in [SKILL.md](skills/react-clean-architecture/SKIL
 | [AUDIT.md](skills/react-clean-architecture/AUDIT.md) | every audit check and how to fix each failure |
 | [TOKEN_MAP.md](skills/react-clean-architecture/TOKEN_MAP.md) | Figma px/hex/variable → theme-token mapping used by the design lane |
 | [FORMS.md](skills/react-clean-architecture/FORMS.md) | the form-first gate: `@shared/formBuilder` is the default for any screen with inputs — coverage table (14 field types), escape-hatch ladder, render/performance contract |
-| [COMPONENTS.md](skills/react-clean-architecture/COMPONENTS.md) | shared-components dictionary (props, variants, gotchas) used by the reuse gate — kept honest by the `components-md` drift check in the audit |
+| [COMPONENTS.md](skills/react-clean-architecture/COMPONENTS.md) | shared-components dictionary (props, variants, gotchas) used by the reuse gate — read by section via `scripts/components.js`, kept honest by the `components-md` drift check in the audit |
 | [docs/decisions.md](skills/react-clean-architecture/docs/decisions.md) | decision & live-finding history (not loaded during runs) |
 | [CHANGELOG.md](CHANGELOG.md) | what changed in each version, with the live-run findings that drove it |
 | [examples/](skills/react-clean-architecture/examples/) | filled spec + full expected output tree |
@@ -222,6 +245,9 @@ The agent walks the checklist in [SKILL.md](skills/react-clean-architecture/SKIL
 | `scripts/rollback.js` | manifest-scoped undo — dry-run plan, `--apply` to execute |
 | `scripts/setup-test-infra.js` | auto-installs `@testing-library/react-native`, creates/wires `jest.setup.js` (`--check` for report-only) |
 | `scripts/check-components-md.js` | COMPONENTS.md drift detector — DRIFT/STALE vs `src/shared/components` (`--strict`) |
+| `scripts/docref.js` | section reader behind the two below — serves a reference doc's index, then whole sections verbatim by name (`--list`, `--all`) |
+| `scripts/components.js` | COMPONENTS.md by section: the "I need X → use Y" index, then the entries a screen touches |
+| `scripts/formref.js` | the app's `src/shared/formBuilder/HOW_TO_USE.md` by section (`--repo <root>`) |
 | `scripts/remove-feature.js` | delete a merged feature everywhere (dir + DI + i18n + config + env) |
 | `scripts/rename-feature.js` | rename across code/DI/i18n/config/env via derived identifiers only |
 | `scripts/migrate-feature.js` | upgrade machine-owned files to current templates; hand-written code preserved |
@@ -230,7 +256,7 @@ Paths are relative to [`skills/react-clean-architecture/`](skills/react-clean-ar
 
 ## Testing the skill itself
 
-149 tests on Node's built-in runner — still zero dependencies:
+171 tests on Node's built-in runner — still zero dependencies:
 
 ```bash
 node --test skills/react-clean-architecture/tests/*.test.js
