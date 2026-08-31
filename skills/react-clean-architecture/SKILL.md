@@ -7,9 +7,11 @@ description: >-
   use cases, react-query presentation starter, translations, Jest tests, and registers
   everything in the tsyringe DI container. The design lane (DESIGN.md) builds pixel-accurate
   screens from Figma links, verifies them on the iOS simulator, and registers the service in
-  navigation. Use when the user asks to create a feature, add a feature, scaffold an
-  endpoint/API, implement Figma screens for a feature, or generate a repository, service, or
-  use case from a curl/endpoint. Supports append mode for endpoints and screens.
+  navigation. Screens that collect input are built with @shared/formBuilder by default
+  (FORMS.md). Use when the user asks to create a feature, add a feature, scaffold an
+  endpoint/API, implement Figma screens or a form screen for a feature, or generate a
+  repository, service, or use case from a curl/endpoint. Supports append mode for endpoints
+  and screens.
 ---
 
 # react-clean-architecture
@@ -25,6 +27,8 @@ hand-built by Claude following [DESIGN.md](DESIGN.md).
 
 - Spec schema: [SPEC_FORMAT.md](SPEC_FORMAT.md) · Audit details: [AUDIT.md](AUDIT.md)
 - Design lane (Figma → screens → simulator verification): [DESIGN.md](DESIGN.md)
+- Forms (form-builder-first rule, coverage, render contract): [FORMS.md](FORMS.md) ·
+  Shared components: [COMPONENTS.md](COMPONENTS.md)
 - Filled example: [examples/feature-spec.example.json](examples/feature-spec.example.json),
   expected tree in `examples/expected-output/`
 
@@ -41,6 +45,11 @@ you're on. Every step still runs; only the narration is trimmed.
 - [ ] 0. Baseline: node <skill>/scripts/audit.js --baseline
 - [ ] 0b. Test infra: node <skill>/scripts/setup-test-infra.js (auto-installs
         @testing-library/react-native + jest.setup.js wiring; failure → logic tests + report)
+- [ ] 0c. Shared-component dictionary: node <skill>/scripts/check-components-md.js —
+        WRITE an entry for every DRIFT before any component work (Step 4; procedure in
+        DESIGN.md "Keeping COMPONENTS.md current")
+- [ ] 0d. Any screen with inputs? → read FORMS.md; the form-first gate runs BEFORE the
+        component reuse gate on every such screen
 - [ ] 1. Feature name → new feature or append?  Git tree clean?
 - [ ] 1b. Mode: full (backend + design) / backend only / design only
 - [ ] 2. (backend, full) Single or multiple? → curls one-by-one (auto-EXECUTE for the
@@ -70,8 +79,9 @@ you're on. Every step still runs; only the narration is trimmed.
 ```
 
 Checklist items 3–8 expand under "Step 3" / "Step 5 — Generate, fill, register, audit"
-below (Step 5's sub-items 1–5 are checklist items 4–8); the REUSE-FIRST rule (Step 4
-section) and the REVIEW CONVENTIONS (Step 4b) apply throughout Step 5–8b hand-writing.
+below (Step 5's sub-items 1–5 are checklist items 4–8); the FORM-FIRST rule (FORMS.md),
+the REUSE-FIRST rule (Step 4 section) and the REVIEW CONVENTIONS (Step 4b) apply throughout
+Step 5–8b hand-writing.
 
 ## Context-compaction checkpoints (mandatory pauses)
 
@@ -308,6 +318,33 @@ never silently add to `src/shared/utils`. The generated templates already import
 `formatNumericGregorianDate`, `useResolve`, `getStoredLanguage`, etc. — keep it that way in
 everything you hand-write. (`cleanString` stays mapper-local; that is the repo convention.)
 
+Before writing ANY input, the FORM-FIRST rule runs first: a screen that collects input for a
+submission is a form, and a form is a `FormFieldConfig[]` handed to `<FormBuilder />` from `@shared/formBuilder`
+— never hand-wired `TextInput` / `DraftTextInput` / `DropdownInput` / `DatePicker` /
+`FileUpload` / `Checkbox` / `OptionGroup` JSX. The builder covers 14 field types plus
+conditional visibility, cross-field validation, reset-on-change and i18n messages; a feature
+that hand-wires a form re-implements all of it and inherits none of the later fixes. Anything
+the builder does not cover goes down [FORMS.md](FORMS.md) §3's ladder — `type: 'custom'` first,
+a shared component beside the form second, the hand-wired login pattern (draft refs, no React
+state per keystroke) only as a documented last resort. Read [FORMS.md](FORMS.md) before
+building any screen with inputs; its §4 render contract (`subscribeHost: false`, stable
+`fields` identity, `commitOnBlur`) is not optional.
+
+Before writing ANY component, the same rule runs against `@shared/components` through
+[COMPONENTS.md](COMPONENTS.md) — and that file only works if it is current. Other teams add
+shared components between skill runs, and a component missing from the dictionary is
+invisible to the gate: Claude concludes "no shared match" and hand-builds a duplicate. So
+**whenever you are about to build or audit components, run**
+
+    node <skill>/scripts/check-components-md.js [--repo <path>]
+
+**and WRITE the entries for anything it reports as DRIFT before continuing** — it detects,
+you write the prose. Full procedure and entry format: DESIGN.md → "Keeping COMPONENTS.md
+current". This is not optional and not deferrable to the user: `audit.js`'s `components-md`
+check is a WARN only so it never blocks a run, but leaving drift unwritten means the next
+run repeats the duplication. Same rule when YOU add a prop to a shared component: update its
+COMPONENTS.md entry and its `HOW_TO_USE.md` in the same change.
+
 ## Step 4b — REVIEW CONVENTIONS (mandatory for everything you hand-write)
 
 Every rule below comes from a real PR review round on this repo — each one was raised by a
@@ -338,6 +375,16 @@ maps → `presentation/constants.ts`. Prop and state types → `presentation/typ
 fetching, derived values, `renderItem`/`keyExtractor`/`pagination` memos, and every
 handler → the controller; screens receive finished values and render them. A screen that
 computes anything beyond JSX has logic in the wrong file.
+
+**Forms go through the form builder.** Any screen with inputs uses `@shared/formBuilder`:
+config array in a memoised `use<Flow>Fields` hook, `useFormBuilder` in the controller,
+`<FormBuilder {...formProps} />` in the screen with zero input JSX. Field-dependent behaviour
+is `visibleWhen` / `disabled(values)` / `visibleWhen` variants — not a config rebuilt from the
+host, and not host state. Render contract: `subscribeHost: false` on a screen with chrome,
+`commitOnBlur: true` on free-text fields, `getValues()`/`getErrors()` in handlers instead of
+the render snapshot, the PageStepper store written once per step boundary. Full rules and the
+escape-hatch ladder: [FORMS.md](FORMS.md). Reviewers have rejected hand-wired forms on the same
+grounds as hand-rebuilt shared components.
 
 **No dead modules.** Never leave a placeholder file nothing imports — reviewers flag it
 immediately ("this is not used at all"). Create `constants.ts` / `types.ts` when there is
@@ -406,7 +453,8 @@ real service, delete the mock file, restore `requiresAuth` if it was relaxed for
 created/wired — these edits are NOT covered by rollback.js); if its install failed, state
 plainly that this feature ships logic-level tests only and what to run to fix it. **Full/design modes
 additionally**: screens built with their verification status (AR light/dark, EN mirror),
-deviations the user accepted at checkpoints, icons added to the registry, and the
+deviations the user accepted at checkpoints, icons added to the registry, COMPONENTS.md
+entries you added or corrected (Step 4), and the
 translations flagged for Corporate Communication review. And navigation:
 
 - **Backend-only mode**: the reminder — **expo-router**: "to expose the screen, add a route

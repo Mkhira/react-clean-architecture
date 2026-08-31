@@ -11,7 +11,10 @@ References shipped with this skill:
 - [TOKEN_MAP.md](TOKEN_MAP.md) — Figma px/hex/variable → theme token mapping (verified values)
 - [COMPONENTS.md](COMPONENTS.md) — every `@shared/components` component: props, variants,
   gotchas, usage. **Read the relevant entries BEFORE picking components — never re-read the
-  component sources first.**
+  component sources first.** It is a snapshot of a directory that other teams keep adding to,
+  so **run `node <skill>/scripts/check-components-md.js` first and close any DRIFT it reports
+  (see "Keeping COMPONENTS.md current" below) — an unlisted component is invisible to the
+  reuse gate, and the gate then green-lights rebuilding something that already exists.**
 
 ## Screen collection (SKILL.md Step 2c — run at intake, before anything is built)
 
@@ -119,6 +122,11 @@ transitions, verification, navigation registration — follows the sections belo
 - **REUSE-FIRST**: shared components (COMPONENTS.md) → feature-local components → only then
   new code. New generic pieces are **always feature-local** (`presentation/components/…`) —
   never silently added to `@shared/components`.
+- **FORM-FIRST**: a screen that collects input for a submission is a form, and a form is a `FormFieldConfig[]`
+  handed to `<FormBuilder />` — **not** hand-wired `TextInput`/`DropdownInput`/`DatePicker`/
+  `FileUpload` JSX. The form-first gate runs BEFORE the reuse gate (it decides what the reuse
+  gate is even for). Procedure, coverage table, escape-hatch ladder and the render contract:
+  [FORMS.md](FORMS.md).
 - If the Figma MCP tools require their prerequisite skills (`figma-design-to-code` before
   `get_design_context`), invoke those skills first.
 
@@ -149,19 +157,65 @@ For each screen unit (screen + its sheets/dropdowns/state frames):
 1. **Fetch**: `get_design_context` + `get_screenshot` for the screen node; metadata for
    component/state nodes. Use `get_variable_defs` values when present — variable names map
    ~1:1 to theme tokens (see TOKEN_MAP.md).
-2. **Plan — MANDATORY REUSE GATE (do this BEFORE writing any component file):** build an
+2. **Plan — MANDATORY FORM GATE, then REUSE GATE (both BEFORE writing any component file).**
+
+   **Form gate first (FORMS.md §1):** does this screen collect input? If yes, list every input
+   element and map each through FORMS.md §2's element→field-type table. Every element that maps
+   becomes a config entry in `use<Flow>Fields.tsx` — **the screen gets no input JSX at all**,
+   only `<FormBuilder {...formProps} />` plus chrome. Elements that do not map go through
+   FORMS.md §3's ladder (`type: 'custom'` → shared component beside the form → hand-wired login
+   pattern, last resort, with the rung named in a comment). A single unusual field never
+   justifies hand-wiring the whole screen. Hand-wiring a form the builder covers is a
+   review-blocking violation, the same class as rebuilding a shared component.
+
+   **Then the reuse gate** for everything the form does not own (chrome, cards, sheets,
+   headers, lists): build an
    explicit element→component table for the screen: every visual element (cards, rows,
    sheets, chips, inputs, headers, collapsibles, carousels…) is mapped to a shared
    component via COMPONENTS.md's quick-lookup, and for anything not obviously covered,
    `ls src/shared/components/ui/{atoms,molecules,organisms}` and read the matching
    COMPONENTS.md entry before deciding — COMPONENTS.md is a snapshot; the directory
    listing is the live truth (a component present in the repo but missing from
-   COMPONENTS.md means COMPONENTS.md must be regenerated, not that the component is fair
-   game to rebuild). Only elements with NO shared match become feature-local components,
+   COMPONENTS.md means COMPONENTS.md must be UPDATED — see "Keeping COMPONENTS.md
+   current" — not that the component is fair game to rebuild). Only elements with NO
+   shared match become feature-local components,
    and each new feature-local component's doc comment must name what was checked (e.g.
    "no shared match: CardDetails covers collapse but not X"). Rebuilding behavior a
    shared component already provides (collapsible card = CardDetails, label/value rows =
    Rows/CardDetailsRow, sheets = BottomSheetModal, etc.) is a review-blocking violation.
+### Keeping COMPONENTS.md current (mandatory, not optional)
+
+`COMPONENTS.md` is the reuse gate's only index. Every entry it is missing is a component
+the gate cannot see, and the observed failure mode is always the same: Claude concludes
+"no shared match", hand-builds a duplicate, and a reviewer finds it later. (Live: 2026-08-19
+the `List` organism was missing and a raw FlatList was nearly written; 2026-08-23 the
+`ContactOtpSheet` organism was missing and EstablishmentSignup shipped a ~250-line
+`OtpVerificationSheet` duplicate of it.)
+
+So when `check-components-md.js` reports drift, **you write the missing entries then and
+there** — before the reuse gate runs, and before you report an audit as finished. It is a
+detector, never a generator; the prose is yours.
+
+    node <skill>/scripts/check-components-md.js [--repo <path>]
+
+- **DRIFT `<Name>` (`<bucket>`)** — the component exists in the repo with no `### <Name>`
+  section. Read its sources (`<Name>.tsx` / `types.ts` / `styles.ts`, and its `HOW_TO_USE.md`
+  when one exists), then ADD an entry in the bucket's section, alphabetically, in the exact
+  house format: `### <Name> — <atom|molecule|organism>`, then **Purpose** / **Exports** /
+  **Key props** / **Behavior & gotchas** / **Usage** (a real tsx snippet). Also add a
+  quick-lookup row ("I need X → use Y") — the table is what the gate actually scans.
+  Gotchas are the point of the entry: write down what surprised you in the source (a
+  controlled-only prop, a countdown that does not restart, masked digits, a callback with an
+  optional argument), not a restatement of the prop table.
+- **STALE `<Name>`** — an entry matching no component: it was renamed or deleted. Rename the
+  heading, or delete the section plus its quick-lookup row.
+- Re-run until it prints `0 drift, 0 stale`, and say in the final report which entries you
+  added.
+
+When YOU add a prop to a shared component during a run, updating its COMPONENTS.md entry and
+its `HOW_TO_USE.md` is part of that change — the drift checker only sees missing components,
+never stale prop lists.
+
 3. **Generate** into `src/features/<feature-dir>/presentation/` (kebab-case dir — SKILL.md
    Step 1). Everything here is hand-written, so SKILL.md **Step 4b — REVIEW CONVENTIONS**
    applies in full: shared enum constants, theme tokens only in styles, `Label` type
@@ -171,6 +225,18 @@ For each screen unit (screen + its sheets/dropdowns/state frames):
      `createStyles = (theme: Theme) => StyleSheet.create({...})`).
    - Screens: `screens/<name>/index.tsx` (+ styles.ts/types.ts) or extend the starter
      `screens/<Feature>Screen.tsx` as the flow host.
+   - **Forms** (any screen with inputs — see FORMS.md): field configs in a memoised
+     `screens/<flow>/use<Flow>Fields.tsx` (one per step in a multi-step flow, mirroring
+     `SubmitReport/fields/`), `useFormBuilder` in the controller, `<FormBuilder {...formProps} />`
+     in the screen. Non-negotiable render contract (FORMS.md §4): `subscribeHost: false` on any
+     screen with real chrome; a `fields` array memoised on stable deps only (`t`, option arrays,
+     `useCallback` handlers — nothing that changes on a keystroke); free-text fields
+     `commitOnBlur: true`; handlers read `getValues()`/`getErrors()`, never the render snapshot;
+     uncontrolled mode with the PageStepper store written once per step boundary
+     (`validate()` → `setFormData(getValues())`), never `values`+`onValuesChange`; conditional
+     behaviour as `visibleWhen`/`disabled(values)`/`visibleWhen` variants instead of rebuilding
+     the config from the host. `<Flow>FormValues` + `DEFAULT_<FLOW>_FORM_VALUES` live in
+     `presentation/types.ts`. Reference: `src/features/BankAccountManagement/presentation/screens/`.
    - **Controller** (`controller.ts`): ALL UI state + handlers; screens stay prop-driven with
      zero business logic. Server state ONLY through `queries.ts` hooks (never useState).
      Level/step derivation logic belongs in a domain use case, not the controller.
@@ -231,7 +297,10 @@ For each screen unit (screen + its sheets/dropdowns/state frames):
    Components needing theme/i18n get a feature-local render wrapper (REUSE-FIRST: check
    `src/shared/testing/` before writing one). Priority render cases: the empty/loading gate
    (never show the empty view while fetching), status-variant mapping on tags, RTL-direction
-   props, and one screen smoke render.
+   props, and one screen smoke render. On a form screen add FORMS.md §7's cases: the
+   field config's `visibleWhen` outcomes and array-identity stability, `validate()` blocking
+   submit with the expected error keys, and the conditional field appearing only after its
+   trigger value is set.
 5. **Verify** (section 3) → **checkpoint** (section 4) → next screen.
 
 ## 3. Verification loop (iOS simulator)
@@ -362,6 +431,8 @@ feature's own conventions.
 - Working files cleaned up LAST: delete `.claude-skill-tsc-baseline.json` and
   `.claude-skill-manifest.json` from the repo root only now — the design lane needed both
   (AUDIT.md's cleanup is deferred to here in full/design modes).
+- Every input screen goes through `@shared/formBuilder` (no hand-wired form JSX), and
+  FORMS.md §8's per-screen form checklist passes.
 - Navigation registered; service card visible on the Services tab; deep-link aliases work.
 - No TODO(claude) left except ones the user explicitly deferred; translations flagged for
   Corporate Communication in the final report.

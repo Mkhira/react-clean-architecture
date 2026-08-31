@@ -1,5 +1,60 @@
 # Changelog
 
+## 1.15.0 — the form builder is the default for every screen with inputs
+
+New doc [FORMS.md](skills/react-clean-architecture/FORMS.md). The app's shared form engine
+(`@shared/formBuilder`) had just been hardened to carry every feature, and the owner's
+direction was that features stop hand-wiring inputs and ship a config array instead. That is
+now a gate in the skill, not a preference.
+
+**The form-first gate runs BEFORE the component reuse gate**, because its answer decides what
+the reuse gate is even for. A screen that collects input for a submission is a
+`FormFieldConfig[]` handed to `<FormBuilder />` — hand-wiring `TextInput` / `DraftTextInput` /
+`DropdownInput` / `DatePicker` / `FileUpload` / `Checkbox` / `OptionGroup` into such a screen is
+a review-blocking violation, the same class as rebuilding a shared component. A lone search box
+in a list header, a filter dropdown or a settings toggle is not a form and still uses the
+component directly.
+
+**What FORMS.md holds:** the gate procedure; a coverage table mapping every design element to
+one of the builder's 14 field types (and naming the shared component each renders internally,
+so the component's own gotchas still apply); a second table for the behaviour that must be
+config rather than host state (`visibleWhen`, value-derived `disabled`, `resetFieldsOnChange`,
+`onFieldChange`, `formatText`, validation, `validateOn`, message keys); an escape-hatch ladder
+for anything uncovered — `type: 'custom'` (with its cost: it is the one field type that
+subscribes to the whole snapshot) → a shared component beside the form → the hand-wired
+draft-ref pattern as a documented last resort; the render/performance contract; file layout;
+validation rules; test cases; and a per-screen checklist.
+
+**The render contract is the part features lose first**, so it is written down as
+non-negotiable: `subscribeHost: false` on any screen with real chrome, a `fields` array
+memoised on stable deps only (nothing that changes on a keystroke), `commitOnBlur` on free-text
+fields, `getValues()`/`getErrors()` in handlers instead of the render snapshot, uncontrolled
+mode with the PageStepper store written once per step boundary, and `onErrorsChange` whenever
+errors are controlled.
+
+**Wired into the existing docs** rather than left as a file nobody opens: SKILL.md (frontmatter,
+doc links, checklist item 0d, Step 4 ahead of the reuse gate, a Step 4b review convention),
+DESIGN.md (§0 FORM-FIRST ground rule, §2 gate before the reuse gate, a Forms bullet in the
+generate step, form test cases, a definition-of-done line) and COMPONENTS.md (a callout above
+the quick-lookup table, and input rows split into "in a form" → field type vs "outside a form"
+→ the component).
+
+Reference implementations named throughout, all live in the app: Add-IBAN
+(`BankAccountManagement/presentation/screens/`) for the builder path, SubmitReport
+(`fields/*.ts`) for multi-step, taxAccountLogin for the draft-ref fallback.
+
+**Also in this release:** the `CardDetailsWithActions` entry COMPONENTS.md was missing — the
+drift detector had been reporting it, and an unlisted component is invisible to the reuse gate.
+
+Every API name, preset name and field type in FORMS.md was verified against
+`src/shared/formBuilder` before release; an audit pass caught four invented validation preset
+names (`iban`, `crNumber`, `vatNumber`, `dateAfter` — the real ones are `saudiIban`, `cr` /
+`crTenDigits`, `vatCertificateNumber`, `expiryAfterIssueDate`), a scope rule that contradicted
+itself across four docs, and an unverifiable claim about existing features. All fixed before
+this commit.
+
+Suite 149/149; COMPONENTS.md drift 0/0. SKILL_VERSION → 1.15.0.
+
 ## 1.14.2 — `legacyDir` exemption + the `mock-committable` check
 
 Both findings come from auditing an existing feature (`src/features/Signup/EstablishmentSignup`)

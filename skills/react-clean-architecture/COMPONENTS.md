@@ -6,10 +6,30 @@ Source of truth: `src/shared/components/` (atomic design: `ui/atoms`, `ui/molecu
 
 **Correction (verified 2026-08-16):** internal file layout is MIXED, not uniform — some components use `Name/index.tsx` + `types.ts` + `styles.ts` (Label, LinearGradientCard), others use `Name/Name.tsx` + `Name.types.ts` + `Name.styles.ts(x)` + `index.ts` barrel (StepperActions, DropdownItem, Card). Don't assume paths — the props/behavior/exports info below is verified, but locate files with a glob when editing. Spot-checked claims confirmed: `previoudButtonDisabled` typo (StepperActions.tsx:31), `LinearGradiantCard` typo alias (LinearGradientCard/index.ts:1), `showCheckIcon` accepted-unused (DropdownItem).
 
+## FORMS COME FIRST — check `@shared/formBuilder` before this table
+
+If the screen collects input for a submission, **it is a form, and a form is a config array,
+not JSX**. Do not
+pick `TextInput` / `DraftTextInput` / `DropdownInput` / `DatePicker` / `FileUpload` /
+`Checkbox` / `OptionGroup` out of the table below and wire them into a screen — hand-wiring a
+form is a review-blocking violation, the same class as rebuilding a shared component.
+
+Read [FORMS.md](FORMS.md) first: it holds the form-first gate, the element→field-type table
+(14 types), the ladder for anything the builder does not cover, and the render/performance
+contract (`subscribeHost: false`, stable `fields` identity, `commitOnBlur`).
+
+The entries below are still the truth about each component's props and gotchas — the form
+builder renders these very components internally, so their traps still apply to you. They are
+just not yours to instantiate inside a form.
+
+**Not a form:** a lone search box in a list header, a filter dropdown, a settings-row toggle.
+Those use the component directly, from this table.
+
 ## Quick lookup — "I need X → use Y"
 
 | Need | Component |
 |---|---|
+| **Any screen that collects input** | **`@shared/formBuilder` — see [FORMS.md](FORMS.md)** |
 | Text (any) | `Label` (type presets; never raw RN Text) |
 | SVG icon | `Icon` (registry `src/assets/icons/index.ts`) |
 | Button (all kinds) | `Button` / `IconButton` / `TextButton` (molecules/ButtonVariants) |
@@ -21,12 +41,17 @@ Source of truth: `src/shared/components/` (atomic design: `ui/atoms`, `ui/molecu
 | Screen container | `BaseScreen`; service-flow screens use `PageStepper` (@core/app) instead |
 | Screen header | `PageHeader` (`main`/`focus`/`secondary`) |
 | Any bottom sheet or full-screen overlay | `BottomSheetModal` (+ `useBottomSheetModal`) |
+| OTP verification sheet (mobile or email) | `ContactOtpSheet` — never hand-build one |
+| "Remaining time" mm:ss display | `CountdownTimer` (display only; parent owns the ticking) |
 | Modal with title + actions | `Modal` (organism, named export only) |
 | Leave-flow confirmation | `CloseService` |
-| Text field (all variants incl. search) | `TextInput` (`variant='search'` etc.) |
-| Select field trigger | `DropdownInput` → opens `Dropdown` (organism) |
+| Text field **in a form** | form builder `type: 'text'` — see FORMS.md |
+| Text field outside a form (search box, one-off) | `TextInput` (`variant='search'` etc.) |
+| Select field **in a form** | form builder `type: 'dropdown'` (hosts one shared `Dropdown` for the whole form) |
+| Select field outside a form | `DropdownInput` → opens `Dropdown` (organism) |
 | Option row in custom list | `DropdownItem` |
-| Radio/checkbox single | `Radio` / `Checkbox` (controlled) |
+| Radio/checkbox **in a form** | form builder `type: 'radio'` / `'checkbox'` / `'checkboxGroup'` |
+| Radio/checkbox single outside a form | `Radio` / `Checkbox` (controlled) |
 | Radio/checkbox group (filter/sort sheets) | `OptionGroup<T>` (generic) |
 | Ready-made filter+sort triggers & sheets | `Filtration` |
 | Any scrolling/paginated list (pager, infinite scroll, empty state) | `List` (organism) — never raw FlatList/FlashList |
@@ -34,16 +59,19 @@ Source of truth: `src/shared/components/` (atomic design: `ui/atoms`, `ui/molecu
 | On/off switch | `TogglePill`; row with toggle → `ListItem`/`MenuItem` `withToggle` |
 | Selectable card (radio/checkbox) | `Card variant='selectable'`; plain container card → `Card showActions={false} showIcon={false}` |
 | Label/value rows | `CardDetailsRow` (`Rows`); collapsible card wrapper → `CardDetails` |
+| Expandable record card WITH footer buttons | `CardDetailsWithActions` (never `CardDetails` + a hand-built button row) |
 | Empty state | `EmptyView`; status result → `CardStatus`; fatal error screen → `ErrorView` |
 | Loading | global `setLoader` (@core/loader) for blocking; `Loader` for local |
 | Step footer (next/prev/submit) | `StepperActions` (via PageStepper `footerActions`) |
 | Step ring "2 of 4" | `ProgressIndicator` |
 | Gradient hero/banner card | `LinearGradiantCard` (typo'd alias is the common import) / `LinearGradientBackground` |
-| Date picking (Gregorian/Hijri) | `DatePicker` |
+| Date field **in a form** | form builder `type: 'date'` |
+| Date picking outside a form | `DatePicker` |
 | Collapsible sections | `Accordion` / `AccordionList` |
 | Horizontal card carousel | `Carousel` (`CarouselWrapper<T>`) |
 | Data table | `Table<T>` (no virtualization) |
-| File upload UI | `FileUpload` (presentational only — wire picker yourself) |
+| Attachments **in a form** | form builder `type: 'fileUpload'` (you still supply `onBrowse`/`onRemoveFile`) |
+| File upload outside a form | `FileUpload` (presentational only — wire picker yourself) |
 | QR scan | `QRCodeScanner` / `EInvoiceQrCodeModal` + `decodeZatcaQrTlv` |
 | PDF display | `PdfViewer` (dev build) |
 | Barcode render | `Barcode` (Code 128) |
@@ -414,6 +442,20 @@ const sheet = useBottomSheetModal();
 <CopyIcon value={invoice.uuid} message={t('common.copied')} />
 ```
 
+### CountdownTimer — molecule
+**Purpose:** Clock icon + "remaining time" label + `mm:ss` value. Display only — it holds no timer; the parent (usually `useOtpVerificationController`) owns the countdown.
+**Exports:** `CountdownTimer` (default, `React.memo`, + named); `CountdownTimerProps`, `CountdownTimerVariant`.
+**Key props:**
+- `formattedTime: string` — **required**; the already-formatted value (`formatCountdown(seconds)` from `@shared/screens/otpVerification/controller` produces it).
+- `label?` — defaults to i18n `countdownTimer.remainingTime`.
+- `variant?: 'stacked' | 'inline' ('stacked')` — stacked puts a disabled-tone label row above the value; inline is one row `[icon, label, value]`.
+- `style?` — container override.
+**Behavior & gotchas:** Never counts down on its own — passing a static string renders a frozen timer. Icon is `clock` at `size.parts.sm`. Stacked label is `textDisabled`, inline label is `text`, so the two variants are not visually interchangeable.
+**Usage:**
+```tsx
+<CountdownTimer formattedTime={formattedTime} label={t('otp.timerLabel')} variant="inline" />
+```
+
 ### DropdownInput — molecule
 **Purpose:** Read-only pressable field with chevron that opens a dropdown/sheet picker.
 **Exports:** `DropdownInput` (default + named); `DropdownInputProps`, `PressedContainerStyleParams`, `PressedInputStyleParams`.
@@ -714,6 +756,38 @@ showToast(t('common.copied'));
 </CardDetails>
 ```
 
+### CardDetailsWithActions — organism
+**Purpose:** `CardDetails` plus a footer row of action buttons under the body — the standard "expandable record card with buttons" (list rows for returns, invoices, requests).
+**Exports:** `CardDetailsWithActions` (default + named via the organisms barrel), **and** the types `CardDetailsWithActionsProps` / `CardDetailsWithActionsButton` ARE barrel-exported (unlike `CardDetailsProps`).
+**Key props:** everything `CardDetails` takes (`title?`, `description?`, `headerChildren?`, `expandable`, `expanded` — initial state only, `onToggle?`, `containerStyle?`, `dividerColor?`) plus:
+- `children?` — the card body, rendered ABOVE the action row.
+- `actions?: CardDetailsWithActionsButton[]` — `{ key, label, onPress?, variant? ('primary'), show? (true), disabled? (false), testID? }`. `key` is the list key, so it must be stable.
+**Behavior & gotchas:**
+- **`show: false` removes the button from the row**, it does not grey it out — that's `disabled: true`. Buttons share the row via `flex: 1`, so hiding one makes the rest wider; a `show` driven by data changes the layout, not just the contents.
+- Buttons are **wrapped in a responder-capturing `View`** (`onStartShouldSetResponder`) precisely because `CardDetails` toggles on ANY tap inside it — so a press here does not collapse the card. Keep that wrapper in mind before adding your own touchables to `children`: those are NOT protected and will toggle the card (see the `CardDetails` gotcha).
+- The whole footer block (two `Divider`s + the row) renders only when at least one action survives the `show` filter — no empty divider on a card with no visible actions.
+- **RTL:** the action row is a `flexDirection: 'row'`, so the FIRST array entry renders RIGHTMOST. Transcribe Figma button order right-to-left (DESIGN.md §0).
+- Sizing is fixed: every button is `size="lg"` `fullWidth` with an `xl` line height. Only `variant` is yours to choose.
+**Usage:**
+```tsx
+// controller.ts — actions built here, not in the screen
+const actions: CardDetailsWithActionsButton[] = [
+    { key: 'viewDetails', label: t('returns.actions.viewDetails'), variant: 'secondary', onPress: handleViewDetails },
+    { key: 'payNow', label: t('returns.actions.payNow'), show: item.hasOutstandingAmount, onPress: handlePayNow },
+];
+
+<CardDetailsWithActions
+    expandable
+    expanded={props.expanded}
+    onToggle={handleExpandToggle}
+    headerChildren={headerChildren}
+    containerStyle={styles.card}
+    actions={actions}
+>
+    <Rows data={detailRows} />
+</CardDetailsWithActions>
+```
+
 ### Carousel — organism
 **Purpose:** Generic horizontal snap carousel (FlatList wrapper) with spacing/snapping defaults and optional title.
 **Exports:** `Carousel` (barrel default alias), `CarouselWrapper` (named, generic `<T>`); `CarouselWrapperProps<T>`, `CarouselRenderParams<T>`.
@@ -741,6 +815,25 @@ showToast(t('common.copied'));
 <CloseService visible={show} onClose={hide} title={t('closeService.title')}
   confirmAction={{ label: t('common.leave'), onPress: leaveFlow }}
   dismissAction={{ label: t('common.stay'), onPress: hide }} />
+```
+
+### ContactOtpSheet — organism
+**Purpose:** The app's OTP-verification sheet for a **mobile number or email**: warning line, instruction + masked target, digit boxes, error row, countdown, and Cancel/Resend footer. Presentation only — send/validate/navigation stay in the feature controller.
+**Exports:** `ContactOtpSheet` (default + named); `ContactOtpChannel`, `ContactOtpSheetProps`, `ContactOtpSheetContentProps`, `DEFAULT_CONTACT_OTP_LENGTH` (4), `DEFAULT_CONTACT_OTP_TIMER_SECONDS` (120).
+**Key props:**
+- `visible`, `channel: 'mobile' | 'email'`, `maskedTarget: string` — **required**; `channel` picks the mobile vs email instruction copy.
+- `otpValue: string` + `onOtpChange` — **required, fully controlled**: set `otpValue` to `''` to clear the boxes after a rejected code.
+- `onVerify: (code?: string) => void` — fires automatically once every digit is filled (note the OPTIONAL arg; a handler typed `(code: string)` will not type-check).
+- `onResend`, `onClose` — **required**; `onResend` only fires after the countdown hits zero.
+- `error?`, `length? (4)`, `timerSeconds? (120)`, `isVerifying? (false)`.
+- Copy overrides: `title?`, `warningText?`, `instructionMobileText?`, `instructionEmailText?`, `remainingTimeLabel?`, `resendLabel?`, `cancelLabel?` — all default to `contactOtpSheet.*` global i18n keys.
+**Behavior & gotchas:** Built on the `Modal` organism (filled destructive Cancel, Resend disabled until expiry) with `CountdownTimer variant="stacked"` and `useOtpVerificationController`. **Digits are masked** (`secureTextEntry` on every box except the focused one) — a design that shows the digits needs a different component. **The countdown does not restart when `visible` flips back on** — the hook lives above the visibility check, so remount with `key={session}` for a fresh timer per open. `isVerifying` disables input and covers the content with a `Loader`: the global `setLoader` is useless here because the sheet is its own modal window and the app-root loader renders underneath it.
+**Usage:**
+```tsx
+<ContactOtpSheet key={otpSession} visible={otpVisible} channel={otpChannel}
+  maskedTarget={maskedMobile} otpValue={otpValue} onOtpChange={setOtpValue}
+  onVerify={handleVerify} onResend={handleResend} onClose={closeSheet}
+  error={otpError ?? undefined} isVerifying={isVerifying} timerSeconds={60} />
 ```
 
 ### CustomTabBar — organism

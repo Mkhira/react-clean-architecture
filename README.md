@@ -57,12 +57,12 @@ when the real API lands. Screens, queries, and tests never know they're mocked.
 
 ### The design lane (full / design modes)
 
-Screens are built by the agent from Figma links following strict rules ([DESIGN.md](skills/react-clean-architecture/DESIGN.md)) — theme tokens only, shared-component reuse gate (backed by a COMPONENTS.md **drift detector** in the audit), Arabic-first RTL — then **verified on the iOS simulator** before sign-off. When `idb` is present (the installer sets it up automatically), verification is **interactive**: real taps drive every flow transition, filter, and pager — not just screenshots.
+Screens are built by the agent from Figma links following strict rules ([DESIGN.md](skills/react-clean-architecture/DESIGN.md)) — theme tokens only, a **form-first gate** (any screen collecting input for a submission is a form-builder config array, never hand-wired inputs — [FORMS.md](skills/react-clean-architecture/FORMS.md)), a shared-component reuse gate (backed by a COMPONENTS.md **drift detector** in the audit), Arabic-first RTL — then **verified on the iOS simulator** before sign-off. When `idb` is present (the installer sets it up automatically), verification is **interactive**: real taps drive every flow transition, filter, and pager — not just screenshots.
 
 ```mermaid
 flowchart LR
     A["Figma links +<br/>flow narration"] --> B["screen units +<br/>transition edges"]
-    B --> C["reuse gate<br/>element → shared component"]
+    B --> C["form gate → reuse gate<br/>element → field type / component"]
     C --> D["build screen<br/>controller · styles · i18n"]
     D --> E["register navigation<br/>routes · deep links · service card"]
     E --> F["verify on simulator<br/>AR light · AR dark · EN mirror"]
@@ -202,6 +202,7 @@ The agent walks the checklist in [SKILL.md](skills/react-clean-architecture/SKIL
 | [SPEC_FORMAT.md](skills/react-clean-architecture/SPEC_FORMAT.md) | `feature-spec.json` schema + collision rules |
 | [AUDIT.md](skills/react-clean-architecture/AUDIT.md) | every audit check and how to fix each failure |
 | [TOKEN_MAP.md](skills/react-clean-architecture/TOKEN_MAP.md) | Figma px/hex/variable → theme-token mapping used by the design lane |
+| [FORMS.md](skills/react-clean-architecture/FORMS.md) | the form-first gate: `@shared/formBuilder` is the default for any screen with inputs — coverage table (14 field types), escape-hatch ladder, render/performance contract |
 | [COMPONENTS.md](skills/react-clean-architecture/COMPONENTS.md) | shared-components dictionary (props, variants, gotchas) used by the reuse gate — kept honest by the `components-md` drift check in the audit |
 | [docs/decisions.md](skills/react-clean-architecture/docs/decisions.md) | decision & live-finding history (not loaded during runs) |
 | [CHANGELOG.md](CHANGELOG.md) | what changed in each version, with the live-run findings that drove it |

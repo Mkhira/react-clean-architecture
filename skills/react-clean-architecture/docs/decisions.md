@@ -105,3 +105,25 @@ file only records where they came from. Never load this during a feature run.
   zatcaReact application-status feature was corrected to this same layout on the PR
   branch. Reviewer comments asking for `data/services`/`domain/repositories` as NAMES are
   answered by the naming decision and need no further action.
+
+- **2026-08-31 — v1.15.0: `@shared/formBuilder` is the DEFAULT for every screen with inputs.**
+  User directive after the form-builder hardening pass on branch `feature/fix-form-builder`
+  (nine structural defects fixed in the shared layer so the builder can carry every feature).
+  New [FORMS.md](../FORMS.md) holds the form-first gate, the 14-type element→field-type
+  coverage table, the escape-hatch ladder (`type: 'custom'` → shared component beside the form
+  → hand-wired login pattern as a documented last resort), the render/performance contract
+  (`subscribeHost: false`, stable `fields` identity via a memoised `use<Flow>Fields` hook,
+  `commitOnBlur`, `getValues()` in handlers, PageStepper store written once per step boundary),
+  the file layout, validation rules and a per-screen checklist. Wired in: SKILL.md doc links +
+  Step 4 (form-first runs BEFORE the component reuse gate) + Step 4b review conventions;
+  DESIGN.md §0 FORM-FIRST ground rule, §2 form gate ahead of the reuse gate, a Forms bullet in
+  the generate step, form test cases, and a definition-of-done line; COMPONENTS.md a
+  forms-come-first callout above the quick-lookup table plus split rows ("in a form" → field
+  type / "outside a form" → the component). Reference implementations named in the docs:
+  Add-IBAN (`src/features/BankAccountManagement/presentation/screens/`) for the builder path,
+  SubmitReport (`fields/*.ts`) for multi-step, taxAccountLogin
+  (`src/presentation/account/screens/taxAccountLogin/`) for the rung-4 draft-ref fallback.
+  Deliberately NOT added: a mechanical audit check for hand-wired inputs — a filter dropdown or
+  a list-header search box is a legitimate standalone input, so the detector would be noisy;
+  the rule is enforced the same way REUSE-FIRST is, by the gate in the docs.
+
