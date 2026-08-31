@@ -1,6 +1,15 @@
 
 # Shared Components Dictionary (`@shared/components`)
 
+> **Read this file with `node <skill>/scripts/components.js`, not a whole-file read.**
+> No argument → the index below (this intro + the quick-lookup table).
+> `components.js Card List Modal` → those entries, verbatim and complete.
+> `--list` → all 64 names · `--all` → the whole file.
+> Pull every component the screen plausibly touches, and pull more whenever you are unsure —
+> there is no cap, extra entries cost you nothing, and an entry you skipped is a duplicate you
+> hand-build. A `MISS` means the dictionary may be behind the repo (run
+> `check-components-md.js`), never that the component does not exist.
+
 Source of truth: `src/shared/components/` (atomic design: `ui/atoms`, `ui/molecules`, `ui/organisms`, plus root `PriceTag.tsx`). Always import from the barrel `@shared/components`; inside `ui/` itself only relative imports are allowed (barrel causes require cycles). Atoms may not import molecules/organisms; molecules may import atoms only; organisms may import both. No business logic/API/navigation inside shared UI; theme tokens only, no hardcoded style values. After adding/moving a component run `node scripts/fix-component-exports.mjs && node scripts/generate-components-barrel.mjs && node scripts/fix-ui-internal-imports.mjs`.
 
 
@@ -392,16 +401,10 @@ const sheet = useBottomSheetModal();
 ```
 
 ### Checkbox — molecule
-**Purpose:** Controlled checkbox with animated check, optional label + description.
-**Exports:** `Checkbox` (default + named), `CheckboxProps`.
-**Key props:**
-- `isChecked (false)` — fully controlled; `onToggle?: (newCheckedState: boolean) => void` — receives inverted value.
-- `isDisabled (false)`; `label?: ReactNode` (max 2 lines, medium); `description?`; style overrides; `testID?`.
-**Behavior & gotchas:** Check animates opacity/scale via reanimated (150ms); bypassed when disabled. Palette `theme.colors.checkbox.{default|checked|disabled}`. Text container `minWidth: 0` (Android multi-line shrink). `role="checkbox"`. Box `size.parts['2xl']`, `borderRadius.xs`.
-**Usage:**
-```tsx
-<Checkbox isChecked={agreed} onToggle={setAgreed} label={t('terms.accept')} />
-```
+
+**In a form:** `type: 'checkbox'` (single, e.g. terms) or `type: 'checkboxGroup'` (list) renders this.
+**Outside a form:** controlled checkbox with animated check, optional `label` (ReactNode, max 2 lines) and `description`. `isChecked` + `onToggle(newCheckedState)` — the callback receives the **inverted** value.
+**Traps:** the check animates opacity/scale (150ms reanimated), bypassed when disabled. Palette `theme.colors.checkbox.{default|checked|disabled}`.
 
 ### Chip — molecule
 **Purpose:** Medium pill chip for filters/tags with neutral/primary palettes, selected/disabled states, optional dismiss icon.
@@ -457,31 +460,16 @@ const sheet = useBottomSheetModal();
 ```
 
 ### DropdownInput — molecule
-**Purpose:** Read-only pressable field with chevron that opens a dropdown/sheet picker.
-**Exports:** `DropdownInput` (default + named); `DropdownInputProps`, `PressedContainerStyleParams`, `PressedInputStyleParams`.
-**Key props:** (extends `BaseInputProps` minus text-editing props)
-- `value?` — selected label; `placeholder?` — shown when no value.
-- `onPress?` — open picker; fires only when `!disabled && !readOnly`.
-- `onPressIn?/onPressOut?`; `disabled?`, `readOnly? (true)`, `containerStyle?`, `inputStyle?`, plus inherited BaseInput props (label, error…).
-**Behavior & gotchas:** Wraps `BaseInput` in a `Pressable`; inner `pointerEvents="none"` — one tap target, `accessibilityRole="button"`. Value rendered via placeholder-overlay Label so long values ellipsize; `accessibilityValue` carries real value. Chevron `arrowDown` `size.icon.xs`. Pressed colors from `theme.colors.dropdownInput`.
-**Usage:**
-```tsx
-<DropdownInput label={t('form.city')} placeholder={t('form.selectCity')} value={city?.name} onPress={citySheet.open} />
-```
+
+**In a form:** `type: 'dropdown'` renders this as the trigger. Never instantiate it inside a form.
+**Outside a form:** the read-only pressable field that opens a `Dropdown`; full props in `ui/molecules/DropdownInput` (extends `BaseInputProps` minus text-editing props).
+**Traps:** wraps `BaseInput` in a `Pressable` with inner `pointerEvents="none"` — one tap target, `accessibilityRole="button"`. `onPress` fires only when `!disabled && !readOnly`. Long values ellipsize via the placeholder-overlay Label; `accessibilityValue` carries the real value.
 
 ### DropdownItem — molecule
-**Purpose:** Single option row for dropdown lists with selected highlight.
-**Exports:** `DropdownItem` (default + named); `DropdownItemProps`, `DropdownItemStyleParams`.
-**Key props:** (extends `PressableProps` minus onPress)
-- `label: string` — **required**; `onPress: () => void` — **required**.
-- `selected (false)` — rounded highlighted background.
-- `showCheckIcon (true)` — **accepted but unused: no check icon is ever rendered**.
-- `containerStyle?`, `labelStyle?`; `disabled` feeds a11y state.
-**Behavior & gotchas:** Pressed feedback via `opacity.subtle`; minHeight + padding lets two-line labels grow. Composes only `Label`.
-**Usage:**
-```tsx
-<DropdownItem label={o.name} selected={o.id === value} onPress={() => pick(o.id)} />
-```
+
+**In a form:** never — the builder's `type: 'dropdown'` owns option rendering.
+**Outside a form:** a single option row for a hand-built list. `label` and `onPress` are **required**; `selected` gives the rounded highlight.
+**Trap:** `showCheckIcon (true)` is **accepted but unused — no check icon is ever rendered.**
 
 ### EmptyView — molecule
 **Purpose:** Centered empty-state block with halo icon, title, description, extra children.
@@ -599,20 +587,10 @@ showBanner('Saved', { type: 'success', message: t('common.saved') });
 ```
 
 ### OptionGroup — molecule
-**Purpose:** Generic radio or checkbox group rendering a titled column of Radio/Checkbox molecules over typed values. The building block for filter/sort sheets.
-**Exports:** default `React.memo(OptionGroup) as typeof OptionGroup` (generic preserved) + named; `OptionGroupProps<T>`, `RadioOptionGroupProps<T>`, `CheckboxOptionGroupProps<T>`, `OptionProps<T>`.
-**Key props:** discriminated union on `type`; `T` compared with `===`/`includes` — use primitives or stable refs:
-- `type?: 'radio' (default) | 'checkbox'` — radio: `value?: T`, `onChange?: (value: T) => void`; checkbox: `value?: T[]`, `onChange?: (value: T[]) => void`.
-- `options: OptionProps<T>[]` — **required**; each is `RadioProps & {value: T}` (supports `label`, `description`, `disabled`, `error`, styles per option).
-- `title?: LabelProps` — `title.children` is the text; `titleStyle?`; `disabled? (false)` — disables all; `style?`, `itemStyle?`.
-- `layout?: 'row' | 'column'` — **declared but ignored** (always column). Group-level `error?` also declared but never rendered.
-**Behavior & gotchas:** Radio fully controlled. Checkbox keeps internal state: taps toggle locally, `onChange` fires post-commit via effect; parent `value` changes sync in without re-firing (checkbox `value` = sync source, not strict controlled). Keys are `String(option.value)` — ensure uniqueness.
-**Usage:**
-```tsx
-<OptionGroup<string> type="checkbox" title={{ children: t('filter.searchIn') }}
-  options={sections.map(s => ({ label: s.name, value: s.id }))}
-  value={sectionIds} onChange={setSectionIds} />
-```
+
+**In a form:** `type: 'radio'` / `'checkboxGroup'` renders this. Spacing is configurable from the field config — `titleSpacing` (default 8) and `itemSpacing` (default 16) pass straight through, so a Figma gap needs no wrapper.
+**Outside a form** (filter/sort sheets, its main non-form use): generic titled column of Radio/Checkbox molecules over typed values. `options` **required**; discriminated union on `type: 'radio' (default) | 'checkbox'`; `T` compared with `===`/`includes` — use primitives or stable refs. Full props in `ui/molecules/OptionGroup/types.ts`.
+**Traps:** radio is fully controlled, but **checkbox keeps internal state** — taps toggle locally and `onChange` fires post-commit via an effect (its `value` is a sync source, not strictly controlled). Keys are `String(option.value)` — ensure uniqueness. `layout?: 'row' | 'column'` is **declared but ignored** (always column); the group-level `error?` is likewise never rendered.
 
 ### ProgressIndicator — molecule
 **Purpose:** Circular step-progress ring ("2 of 4") with previous/title/description/next labels for multi-step flows.
@@ -628,17 +606,10 @@ showBanner('Saved', { type: 'success', message: t('common.saved') });
 ```
 
 ### Radio — molecule
-**Purpose:** Single controlled radio row with optional label, description, error.
-**Exports:** default `React.memo(Radio)` + named; `RadioProps`.
-**Key props:**
-- `selected? (false)` — controlled; `onSelect?: () => void` — parent flips state.
-- `label?: ReactNode`; `description?`; `error?: string` — error icon + red label, **hidden while disabled**.
-- `disabled? (false)`; `customSurfaceColor?`; `style?`, `labelStyle?`, `descriptionStyle?`.
-**Behavior & gotchas:** Press shows halo ring (internal `isPressing`), not opacity. No accessibilityRole set — rely on OptionGroup/labels for semantics.
-**Usage:**
-```tsx
-<Radio selected={selected} onSelect={() => onSelect(node)} label={t('type.individual')} />
-```
+
+**In a form:** never directly — `type: 'radio'` renders `OptionGroup`, which renders these.
+**Outside a form:** a single controlled radio row. `selected` + `onSelect()` (parent flips state); optional `label`, `description`, `error`.
+**Traps:** `error` shows an icon + red label but is **hidden while disabled**. Press shows a halo ring, not opacity. **No `accessibilityRole` is set** — rely on `OptionGroup` or the label for semantics.
 
 ### Rating — molecule
 **Purpose:** Star rating display/input with partial fills, RTL-aware fill direction, animated.
@@ -683,19 +654,11 @@ showBanner('Saved', { type: 'success', message: t('common.saved') });
 ```
 
 ### TextInput — molecule
-**Purpose:** Variant-dispatching text field (default/search/phone/card/currency/email/password/textarea) on a shared themed BaseInput.
-**Exports:** `TextInput`, `BaseInput`, `TextInputVariant` enum, `TEXT_INPUT_VARIANT_VALUES`, style creators; `AppTextInputProps`, `TextInputVariantValue`, `SearchInputProps`, `ActionButton`, `IconType`, `BaseInputProps`.
-**Key props:** `AppTextInputProps = BaseInputProps & {...}`; `BaseInputProps` extends RN `TextInputProps` (value/onChangeText/placeholder/keyboardType/multiline pass through).
-- `variant? ('default')` — `'default' | 'search' | 'phone-number' | 'card-number' | 'currency' | 'price-amount' | 'email-username' | 'password' | 'textarea'`.
-- BaseInput: `label?`, `required? (false)`, `helperText?`, `errorText?`, `hasError? (false)`, `readOnly? (false)`, `disabled? (false)`, `showHelperIcon? (true)`, `prefix?: ReactNode`, `leftAccessory?/rightAccessory?`, `fixedDirection?` (forces LTR — phone/card), `isFocused?/isContainerPressed?`, many style overrides (`wrapperStyle`, `containerStyle`, `inputContainerStyle`, `inputStyle`, …).
-- Variant extras: `searchProps?` (`leftActions?: ActionButton[]`, `rightIcon?`, `onRightIconPress?`); `withSearchInputIcon?: boolean`; `cardProps?` (brand detect); currency: `currencies?/selectedCurrency?/defaultCurrencyCode?/onCurrencyChange?/pricePrefix?`; `phonePrefix?`; password: `hidePasswordByDefault?/onTogglePasswordVisibility?`; textarea: `rows?/minHeight?/maxHeight?/resizeMode?/showVerticalScrollbar?`.
-**Behavior & gotchas:** `onChangeText` output normalized to Western digits. Placeholder is a custom overlay Label, not native (shown only while empty). Error text replaces helper. State colors from `theme.colors.inputColors` (error > disabled > focused > pressed). CurrencyInputVariant `require`d lazily (Dropdown↔Currency cycle). `fixedDirection` pins LTR in Arabic.
-**Usage:**
-```tsx
-<TextInput variant="search" withSearchInputIcon value={query} placeholder={t('search')}
-  onChangeText={setQuery} returnKeyType="search" onSubmitEditing={submit} />
-<TextInput label={t('form.email')} variant="email-username" required value={email} onChangeText={setEmail} errorText={errors.email} />
-```
+
+**In a form:** `type: 'text'` (+ `variant`) or `'textarea'` — the builder renders it. Never instantiate it inside a form (FORMS.md §1).
+**Outside a form** (search box in a list header, a one-off field): use it directly; full props in `ui/molecules/TextInput/types.ts`. Also exports `BaseInput`, `TextInputVariant`, `TEXT_INPUT_VARIANT_VALUES`.
+**Variants** — also the values a field config's `variant` takes: `'default' | 'search' | 'phone-number' | 'card-number' | 'currency' | 'price-amount' | 'email-username' | 'password' | 'textarea'`.
+**Traps that survive the builder:** `onChangeText` normalises output to Western digits; the placeholder is an overlay `Label`, not native (empty state only); `errorText` replaces helper text; `fixedDirection` pins LTR under Arabic (phone/card); state colors resolve error > disabled > focused > pressed from `theme.colors.inputColors`.
 
 ### Toast — molecule
 **Purpose:** Compact dark auto-dismissing feedback bubble ("Copied") near screen top.
@@ -849,49 +812,22 @@ const actions: CardDetailsWithActionsButton[] = [
 ```
 
 ### DatePicker — organism
-**Purpose:** Bottom-sheet wheel date picker (day/month/year) supporting Gregorian AND Hijri calendars.
-**Exports:** `DatePicker` (default + named); `DatePickerProps`, `CalendarMode` (`'GREGORIAN' | 'HIJRI'`), `DatePart`, `WheelOption`; whole controller module (`useDatePickerController`, `formatDateValue`, Hijri conversion helpers, `DEFAULT_DATE_FORMAT`, …).
-**Key props:**
-- `visible`, `onClose` — **required**; `value?: Date` (omitted → today clamped).
-- `onChange?: (date: Date, formattedDate: string, calenderMode: CalendarMode) => void` — fires **only on Select**; `date` always Gregorian JS Date, `formattedDate` in active calendar.
-- `minDate?/maxDate?` (defaults ±100 years; swapped if inverted); `title?` (i18n default), `selectLabel?`; `dateFormat ('dd/MM/yyyy')` — tokens `d dd M MM MMM MMMM yy yyyy`.
-- `calendar ('GREGORIAN')` — initial mode, re-applied on each open; `showCalendarToggle (true)`; `disabled (false)`.
-**Behavior & gotchas:** Composes organism Modal → BottomSheetModal + TogglePill + custom WheelColumn (ScrollView + reanimated, Android momentum workarounds). Hijri conversion is arithmetic (tabular Islamic calendar), not `Intl`. Month labels follow `theme.isRTL`, **not** i18n locale. Draft clamped continuously; mode switch converts draft; closing discards; nothing commits until Select.
-**Usage:**
-```tsx
-<DatePicker visible={open} onClose={() => setOpen(false)} value={date}
-  calendar="HIJRI" onChange={(d) => setDate(d)} />
-```
+
+**In a form:** `type: 'date'` renders it, and the field value is the **formatted string** (`DEFAULT_DATE_FORMAT = 'dd/MM/yyyy'`), not a `Date` — convert on submit.
+**Outside a form:** bottom-sheet wheel picker (day/month/year) supporting Gregorian **and** Hijri. `visible` + `onClose` required; `onChange(date, formattedDate, calenderMode)`; `minDate`/`maxDate` default ±100 years (swapped if inverted); format tokens `d dd M MM MMM MMMM yy yyyy`. Exports the whole controller module (`useDatePickerController`, `formatDateValue`, Hijri helpers, `DEFAULT_DATE_FORMAT`).
+**Traps:** `onChange` fires **only on Select** — closing discards the draft. Hijri conversion is arithmetic (tabular Islamic calendar), not `Intl`. Month labels follow `theme.isRTL`, **not** the i18n locale.
 
 ### Dropdown — organism
-**Purpose:** Modal option picker (bottom sheet or full screen) with optional search, flat/sectioned lists, loading + empty states.
-**Exports:** `Dropdown` (default + named); `DropdownProps`, `DropdownOption` (`{label, value}`), `DropdownSection`, `SectionListOptionsType`, `ListType`, `DropdownPresentation`, `DropdownSearchProps`, `OptionsType`.
-**Key props:**
-- `visible`, `onClose`, `onSelect: (option: DropdownOption) => void` — **required**.
-- `options` — **required**, discriminated by `listType`: `'normal'` (default) → `DropdownOption[]`; `'section'` → `{title, data: DropdownOption[]}[]`.
-- `selectedOption?` — matched by `value`; `title?`; `searchable (false)`; `searchPlaceholder?` (i18n default); `presentation: 'bottom-sheet' | 'full-screen' ('bottom-sheet')`; `isLoading (false)`.
-**Behavior & gotchas:** Selecting calls `onSelect` **then auto-closes**. Search clears when `visible` goes false. **Returns `null` when not visible** (Android dismissed-Modal reopen fix). Sectioned mode collapses empty-filtered sections so the empty view shows. `avoidKeyboard` only when searchable + bottom-sheet. Pair with `DropdownInput` as the trigger field.
-**Usage:**
-```tsx
-<DropdownInput label={t('form.city')} value={selected?.label} onPress={() => setOpen(true)} />
-<Dropdown visible={open} title={t('form.selectCity')} searchable options={cities}
-  selectedOption={selected} onSelect={setSelected} onClose={() => setOpen(false)} />
-```
+
+**In a form:** `<FormBuilder>` hosts ONE shared `Dropdown` for the whole form — never mount your own alongside it.
+**Outside a form:** modal option picker (bottom sheet or full screen), optional search, flat or sectioned lists, loading + empty states. Full props in `ui/organisms/Dropdown`; `options` is discriminated by `listType` (`'normal'` → `DropdownOption[]`, `'section'` → `{title, data}[]`).
+**Traps:** selecting calls `onSelect` **then auto-closes**. **Returns `null` when not visible** (Android dismissed-Modal reopen fix). Search clears when `visible` goes false. Sectioned mode collapses empty-filtered sections so the empty view shows. `avoidKeyboard` applies only when searchable + bottom-sheet.
 
 ### FileUpload — organism
-**Purpose:** File-upload UI for single (inline browse) or multiple (dashed drop zone) with per-file uploading/uploaded/error states.
-**Exports:** `FileUpload` (default + named, memoized); `getFileUploadPalette`; `FileUploadProps`, `UploadedFile`, `FileUploadMode` (`'single' | 'multiple'`), `FileUploadState`, `FileUploadPalette`.
-**Key props:**
-- `mode ('single')`; `label?`, `description?`, `required (false)`.
-- `files: UploadedFile[] ([])` — `{id, name, uri, type?, size?, status: 'uploading' | 'uploaded' | 'error', errorMessage?}`.
-- `onBrowse?` — tap on browse/drop zone; `onRemoveFile?: (fileId) => void`.
-- `disabled (false)`; `hasError (false)`; `errorText?`; `browseLabel?` (i18n default); `acceptedTypes?` — helper text ("csv, pdf, png, jpeg").
-**Behavior & gotchas:** **Purely presentational — no document picker**; wire `onBrowse` to expo-document-picker yourself and own `files` state. Error visual auto-derives from `hasError || errorText || any file error`. Custom SVG dashed border + spinner. Single mode hides browse once a file exists. Names truncate `ellipsizeMode="middle"`.
-**Usage:**
-```tsx
-<FileUpload mode="multiple" label={t('form.uploadFiles')} acceptedTypes="csv, pdf"
-  files={files} onBrowse={pickDocument} onRemoveFile={id => setFiles(f => f.filter(x => x.id !== id))} />
-```
+
+**In a form:** `type: 'fileUpload'` renders it — but it is **purely presentational**, so you still supply `onBrowse` (wire expo-document-picker yourself) and `onRemoveFile`, and you still own the `files` array.
+**Outside a form:** same component, same contract. `files: UploadedFile[]` where each is `{id, name, uri, type?, size?, status: 'uploading' | 'uploaded' | 'error', errorMessage?}`; `mode: 'single' | 'multiple'`.
+**Traps:** the error visual auto-derives from `hasError || errorText || any file error`. Single mode hides browse once a file exists. Names truncate `ellipsizeMode="middle"`.
 
 ### Filtration — organism
 **Purpose:** Filter & Sort toolkit: trigger button(s) opening two bottom sheets of radio/checkbox/chips sections; reports selections on Apply.

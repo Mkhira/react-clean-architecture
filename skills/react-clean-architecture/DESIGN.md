@@ -11,10 +11,20 @@ References shipped with this skill:
 - [TOKEN_MAP.md](TOKEN_MAP.md) — Figma px/hex/variable → theme token mapping (verified values)
 - [COMPONENTS.md](COMPONENTS.md) — every `@shared/components` component: props, variants,
   gotchas, usage. **Read the relevant entries BEFORE picking components — never re-read the
-  component sources first.** It is a snapshot of a directory that other teams keep adding to,
-  so **run `node <skill>/scripts/check-components-md.js` first and close any DRIFT it reports
-  (see "Keeping COMPONENTS.md current" below) — an unlisted component is invisible to the
-  reuse gate, and the gate then green-lights rebuilding something that already exists.**
+  component sources first** — the dictionary is a far denser account of the same components
+  than their sources are, and the sources do not carry the traps at all. Read it through the
+  reader script rather than whole:
+
+      node <skill>/scripts/components.js                    # index: "I need X → use Y"
+      node <skill>/scripts/components.js Card List Modal     # those entries, verbatim
+
+  Pull every component the screen plausibly touches, and more whenever you are unsure —
+  there is no cap and extra entries cost you nothing. It is a snapshot of a directory that
+  other teams keep
+  adding to, so **run `node <skill>/scripts/check-components-md.js` first and close any DRIFT
+  it reports (see "Keeping COMPONENTS.md current" below) — an unlisted component is invisible
+  to the reuse gate, and the gate then green-lights rebuilding something that already
+  exists.**
 
 ## Screen collection (SKILL.md Step 2c — run at intake, before anything is built)
 
@@ -119,8 +129,8 @@ transitions, verification, navigation registration — follows the sections belo
 - **STORY IS THE CONTRACT** (SKILL.md): states Figma doesn't draw (loading, error, empty,
   MSG-xx messages) come from the user story + the codebase patterns below. Figma-vs-story
   conflicts → ask the user, never resolve silently.
-- **REUSE-FIRST**: shared components (COMPONENTS.md) → feature-local components → only then
-  new code. New generic pieces are **always feature-local** (`presentation/components/…`) —
+- **REUSE-FIRST**: shared components (COMPONENTS.md, via `scripts/components.js`) →
+  feature-local components → only then new code. New generic pieces are **always feature-local** (`presentation/components/…`) —
   never silently added to `@shared/components`.
 - **FORM-FIRST**: a screen that collects input for a submission is a form, and a form is a `FormFieldConfig[]`
   handed to `<FormBuilder />` — **not** hand-wired `TextInput`/`DropdownInput`/`DatePicker`/
@@ -172,12 +182,19 @@ For each screen unit (screen + its sheets/dropdowns/state frames):
    headers, lists): build an
    explicit element→component table for the screen: every visual element (cards, rows,
    sheets, chips, inputs, headers, collapsibles, carousels…) is mapped to a shared
-   component via COMPONENTS.md's quick-lookup, and for anything not obviously covered,
-   `ls src/shared/components/ui/{atoms,molecules,organisms}` and read the matching
-   COMPONENTS.md entry before deciding — COMPONENTS.md is a snapshot; the directory
+   component via the quick-lookup index (`node <skill>/scripts/components.js`), then
+   **pull the full entry for every component that table names — in ONE call** —
+   before writing any of them:
+
+       node <skill>/scripts/components.js Card CardDetails BottomSheetModal List
+
+   For anything not obviously covered, `ls src/shared/components/ui/{atoms,molecules,organisms}`
+   and pull the matching entry before deciding — COMPONENTS.md is a snapshot; the directory
    listing is the live truth (a component present in the repo but missing from
    COMPONENTS.md means COMPONENTS.md must be UPDATED — see "Keeping COMPONENTS.md
-   current" — not that the component is fair game to rebuild). Only elements with NO
+   current" — not that the component is fair game to rebuild). A `MISS` from the reader
+   means the same thing: check the directory, then write the entry. Never treat a MISS or
+   an unread entry as "no shared match". Only elements with NO
    shared match become feature-local components,
    and each new feature-local component's doc comment must name what was checked (e.g.
    "no shared match: CardDetails covers collapse but not X"). Rebuilding behavior a
@@ -212,12 +229,28 @@ detector, never a generator; the prose is yours.
 - Re-run until it prints `0 drift, 0 stale`, and say in the final report which entries you
   added.
 
+**The house format is machine-read now.** `scripts/components.js` slices the file on
+`### <Name> — <kind>` headings and serves one entry at a time, and `check-components-md.js`
+matches names out of those same headings (aliases in parentheses and `/`-separated names both
+count: `### Button (BaseButton) / IconButton — atom` resolves for all three). So a new entry
+that skips the heading format is invisible to BOTH tools. Two consequences:
+
+- **The quick-lookup table is the only part always loaded.** An entry with no quick-lookup row
+  is an entry nobody will think to ask for. Add the row.
+- **Components the form builder renders** (`TextInput`, `DropdownInput`, `Dropdown`,
+  `DropdownItem`, `OptionGroup`, `Checkbox`, `Radio`, `DatePicker`, `FileUpload`) use a
+  shorter shape on purpose — **In a form** / **Outside a form** / **Traps** — because the
+  builder owns their props and FORMS.md owns the field types. Their entries carry only what
+  survives the builder (pass-through props, the variant list, the traps) and point at the
+  source for the rest. Do not re-expand them into full prop tables; if one of them gains a
+  prop the builder passes through, add it to the **In a form** line.
+
 When YOU add a prop to a shared component during a run, updating its COMPONENTS.md entry and
 its `HOW_TO_USE.md` is part of that change — the drift checker only sees missing components,
 never stale prop lists.
 
 3. **Generate** into `src/features/<feature-dir>/presentation/` (kebab-case dir — SKILL.md
-   Step 1). Everything here is hand-written, so SKILL.md **Step 4b — REVIEW CONVENTIONS**
+   Step 1). Everything here is hand-written, so **[REVIEW.md](REVIEW.md)** (SKILL.md Step 4b)
    applies in full: shared enum constants, theme tokens only in styles, `Label` type
    presets over raw `fontSize`, constants/types out of the controller, no dead modules.
    - Feature-local components: one folder each — `index.tsx` + `styles.ts` + `types.ts`
@@ -339,8 +372,23 @@ Per screen, after generation compiles (`npx tsc --noEmit` clean vs baseline):
    (`saveAccessToken`/`setAuthToken`; MMKV key `authToken`) — runtime only, never in a file.
 3. Screenshot: `xcrun simctl io booted screenshot <scratch>/<screen>-ar-light.png`; toggle
    dark mode in-app (Menu → theme TogglePill, persisted `App-Theme`) and screenshot again.
-   Compare BOTH against the Figma screenshot; fix diffs (spacing, order, wrapping, colors)
-   and re-verify.
+   Compare BOTH against the Figma screenshot at FULL resolution — this comparison is what
+   pixel accuracy rests on, so never shrink these. Fix diffs (spacing, order, wrapping,
+   colors) and re-verify.
+
+   **Re-verification shots: crop to what you changed.** Once you have judged the whole screen
+   and are re-checking one fixed row, header or card, take the shot and crop to that region
+   before looking at it — a full frame to confirm a 4px gap tells you nothing the crop does
+   not, and the surrounding pixels you already approved come back as noise:
+
+       xcrun simctl io booted screenshot <scratch>/recheck.png
+       # region in SCREENSHOT pixels (points × device scale), origin top-left
+       sips -c <height> <width> --cropOffset <top> <left> <scratch>/recheck.png
+
+   Crop only what you have already verified around. Anything you have NOT judged yet — a
+   first pass, a new screen, a layout change that could push other rows — gets the full frame.
+   When a crop leaves you unsure, take the full frame; being unsure is the signal, and there
+   is no cap on how many you take.
 4. RTL nuance: the app defaults to Arabic; if the language was switched, `I18nManager`
    direction fully applies on the NEXT launch — relaunch before judging RTL layout. English
    check: one mirror sanity pass per screen (not pixel-level).

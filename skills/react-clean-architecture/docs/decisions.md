@@ -127,3 +127,103 @@ file only records where they came from. Never load this during a feature run.
   a list-header search box is a legitimate standalone input, so the detector would be noisy;
   the rule is enforced the same way REUSE-FIRST is, by the gate in the docs.
 
+
+## 2026-09-01 — v1.16.0: COMPONENTS.md served on demand; the nine builder-owned entries trimmed
+
+User raised that a first run costs ~92k tokens and asked for it to come down. Two prior
+sessions (2026-08-17, 2026-08-22) had rejected retrieval-based COMPONENTS.md access; this
+reverses that specific decision, at the user's explicit instruction ("do both"), and only that
+one. The standing directive in [[no-token-limits-in-skill]] is UNCHANGED: no read budgets, no
+fetch caps, no screenshot limits, no grouped intake. What changed is retrieval shape, not how
+much the agent is allowed to read.
+
+**Measured before deciding** (this is why "just delete the component docs, we have the form
+builder now" was rejected):
+- `src/shared/components` = 729,355 chars ≈ **197k tokens** across 64 components. COMPONENTS.md
+  is a **9× compression** of it. Falling back to sources costs MORE: `List` alone is 48,591c
+  ≈ 13k tokens — over half the whole dictionary, for one component. `Filtration` is 11.6k.
+  A screen touches 5-8 shared components; source-reading four exceeds the entire dictionary.
+- The form builder owns **9 of 64** entries (3.1k tokens). The other 55 (16.8k) are display and
+  navigation components — List, Card, PageHeader, EmptyView, ErrorView, CardStatus, Tag,
+  Accordion, Carousel, Table, Modal, BottomSheetModal, Toast, StepperActions, ContactOtpSheet,
+  CloseService… A result screen or a list screen has zero form fields.
+- Sources also carry none of the traps the entries exist for (`previoudButtonDisabled`,
+  `LinearGradiantCard`, "never hand-build ContactOtpSheet", "never raw FlatList — use `List`").
+
+**Changes:**
+1. `scripts/components.js` — on-demand reader. No argument → the index (intro + "I need X → use
+   Y" table, ~1.8k tokens). `components.js Card List Modal` → those entries **byte-identical**
+   to the file. `--list` (64 names), `--all` (whole file), `--doc <path>`. Entries are sliced on
+   `### <Name> — <kind>` with the same alias tokenisation `check-components-md.js` uses, so both
+   tools agree on what a name matches.
+2. An unmatched name prints a **MISS** with near-match guidance and the drift command — never
+   silence. Silence read as "no shared match" is precisely how `ContactOtpSheet` was duplicated.
+3. The nine builder-rendered entries (`TextInput`, `DropdownInput`, `Dropdown`, `DropdownItem`,
+   `OptionGroup`, `Checkbox`, `Radio`, `DatePicker`, `FileUpload`) trimmed 11,464c → ~5,900c to
+   **In a form** / **Outside a form** / **Traps**. They keep what survives the builder: the
+   `variant` list (those are the field config's values), `titleSpacing`/`itemSpacing`
+   pass-through, `DEFAULT_DATE_FORMAT`, the Dropdown `null`-when-hidden fix, FileUpload being
+   presentational. Headings kept — the drift checker matches on them. The "outside a form" half
+   is load-bearing: a list-header search box and a filter dropdown are not forms.
+4. Read directives rewired in SKILL.md (doc list, checklist 0c, Step 4), DESIGN.md (references,
+   §0 REUSE-FIRST, §2 reuse gate, "Keeping COMPONENTS.md current"), FORMS.md (intro, §1 gate,
+   §2 coverage note) and AUDIT.md (`components-md` row).
+5. `tests/components-reader.test.js` — 14 tests: index excludes entries and stays under a fifth
+   of the file, entries are verbatim slices, MISS is loud and exits 0, `--all` round-trips, the
+   nine short entries keep their headings and their surviving facts.
+
+**Effect:** the reuse gate reads ~2.5k tokens instead of ~22k, with every entry one command
+away, complete. Full-mode first-run docs ≈50k → ≈33k tokens.
+
+**Not done, deliberately:** splitting COMPONENTS.md into per-component files (the drift checker
+and the quick-lookup table both want one file); summarising entries (retrieval only — an entry
+served is the entry written); any cap on how many entries a run may pull.
+
+## 2026-09-01 — v1.17.0: generic section reader, form-builder reference on demand, SKILL.md split, cropped re-verification
+
+Follow-up to v1.16.0, same user instruction ("do all but no limit"). Every item below is a
+change to how content is *retrieved*; nothing caps what the agent may read, and the
+run-time instructions now say so explicitly.
+
+**1. `scripts/docref.js` — the reader generalised.** v1.16.0's components.js only understood
+COMPONENTS.md's `## bucket` → `### component` shape. docref.js handles any reference doc:
+the index is everything before the first `##` that has `###` children; a `##` WITH `###`
+children is a group label; a `##` WITHOUT them is a section in its own right. `components.js`
+and the new `formref.js` are thin wrappers over it.
+
+Bug caught while generalising: a standalone `##` did not reset the running group, so
+HOW_TO_USE.md listed "Conditional visibility" under "Field configuration reference" and
+"Import path" under "Controlled vs uncontrolled" — a listing that sends the reader to the
+wrong section. Fixed: any `##` ends the previous group.
+
+**2. `scripts/formref.js` — `src/shared/formBuilder/HOW_TO_USE.md` served by section.**
+FORMS.md told the agent to read all 23,730c of it on any form screen; it is 28 sections and a
+form screen needs three or four. Index is title + Quick start (2,175c). Wired into FORMS.md's
+intro and SKILL.md checklist 0d. Run from the repo root, or `--repo <path>`.
+
+**3. Token-cost framing removed from every run-time instruction.** v1.16.0's own wording
+("entries are ~250-600 tokens each") was exactly the kind of nudge the standing directive
+forbids — a cost attached to reading biases toward reading less. All of it is gone from
+COMPONENTS.md, SKILL.md, DESIGN.md, FORMS.md and both scripts, replaced with "there is no cap,
+extra sections cost you nothing". A test now enforces this: `no reader instruction states a
+token budget` fails on a numeric token cost or on cap language ("at most", "sparingly",
+"only read", "budget"). It deliberately does NOT trip on "theme tokens", which is a design
+token and unrelated.
+
+**4. SKILL.md split 34,153c → 22,793c.** Step 2 (endpoint intake, 8.5KB) → `INTAKE.md`, read
+at checklist step 2 and never in design-only mode. Step 4b (review conventions, 4.1KB) →
+`REVIEW.md`, read before hand-writing. Both are read in full when their phase starts — the
+same lazy-doc pattern as APPEND.md and LIFECYCLE.md. Honest accounting: the intake saving
+lands only in design-only runs, and the review saving only before the first compaction
+checkpoint, so this is worth ~1-3k depending on mode, not a headline number.
+
+**5. Cropped re-verification shots (DESIGN.md §3).** Measured: a booted-simulator screenshot
+is 1320×2868, which the API resizes to 722×1568 — around 1,500 tokens per image. §3 mandates
+AR light + AR dark per screen plus a re-shoot per fix round, so a six-screen feature spends
+more on images than on every skill doc combined. The comparison shots stay at FULL resolution
+— that is what pixel accuracy rests on and shrinking them was explicitly rejected. What
+changed is only the RE-CHECK after a fix: crop to the region you changed (`sips -c`), because
+a full frame to confirm a 4px gap adds nothing you have not already approved. Anything not yet
+judged gets the full frame, and unsure means take the full frame.
+
+Suite: 149 → 172 tests, all green.

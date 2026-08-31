@@ -1,12 +1,30 @@
 # FORMS.md — `@shared/formBuilder` is the default for anything with inputs
 
-Companion to [COMPONENTS.md](COMPONENTS.md). COMPONENTS.md answers *"which shared component
+Companion to [COMPONENTS.md](COMPONENTS.md) (read via `node <skill>/scripts/components.js`).
+COMPONENTS.md answers *"which shared component
 renders this element?"*; this file answers the question that comes **first** on any screen that
 collects input: *"is this a form?"* — and if it is, the screen does not wire input components at
 all. It hands a config array to the form builder.
 
+Because the builder owns the input components, COMPONENTS.md no longer carries full prop
+tables for the nine it renders (`TextInput`, `DropdownInput`, `Dropdown`, `DropdownItem`,
+`OptionGroup`, `Checkbox`, `Radio`, `DatePicker`, `FileUpload`) — their entries are now
+**In a form** / **Outside a form** / **Traps**, and THIS file is where the field types live.
+The "outside a form" half still matters: a search box in a list header, a filter dropdown and
+a settings-row toggle are not forms and use those components directly.
+
 Source of truth in the repo: `src/shared/formBuilder/` and its
-`src/shared/formBuilder/HOW_TO_USE.md` (684 lines, the full API reference). This file is the
+`src/shared/formBuilder/HOW_TO_USE.md` (684 lines, the full API reference). **Read it by
+section rather than whole** — same reader as COMPONENTS.md, pointed at that file:
+
+    node <skill>/scripts/formref.js                              # index + Quick start
+    node <skill>/scripts/formref.js "Text input" Dropdown Date    # those sections, verbatim
+    node <skill>/scripts/formref.js --list                        # all 28 section names
+
+Pull every section the form plausibly touches, and more whenever you are unsure — there is no
+cap and extra sections cost you nothing. `--all` prints the whole reference at any time.
+
+This file is the
 **decision procedure and the render/perf contract** — read HOW_TO_USE.md for exhaustive prop
 tables, read this to decide what to build and how to wire it.
 
@@ -17,6 +35,7 @@ Reference implementations, all three live in the repo:
 | Form builder inside a PageStepper flow (the default) | `src/features/BankAccountManagement/presentation/screens/` — `useAddIbanController.ts`, `addIban/useAddIbanFields.tsx`, `AddIbanScreen.tsx` |
 | Multi-step form, one field config per step | `src/features/report/presentation/screens/SubmitReport/fields/*.ts` |
 | Hand-wired escape hatch (draft refs, no form) | `src/presentation/account/screens/taxAccountLogin/` — `controller.ts` + `index.tsx` |
+| One form store shared by several PageStepper steps | `src/features/Signup/establishment-signup/presentation/` — `controller.ts` + `fields/use*Fields.ts`, each step rendering `<FormBuilder {...formProps} fields={stepFields} />` |
 
 ---
 
@@ -42,7 +61,7 @@ Run this gate **in Step 2 of the per-screen build procedure** (DESIGN.md §2), b
 element→component table, because its answer changes what that table is for:
 
 1. Does the screen collect input for a submission? → No: skip this file entirely, go straight
-   to COMPONENTS.md.
+   to the component reuse gate (`node <skill>/scripts/components.js` for the index).
 2. → Yes: list every input element and map each one through §2's table below.
 3. Every element maps to a field type → the screen is `<FormBuilder {...formProps} />` plus
    chrome. **You write no input JSX.**
@@ -61,7 +80,9 @@ dropdown, a toggle in a settings row — is **not** a form. Use the shared compo
 
 14 field types. If your element is in this table, it is a config entry, not JSX. The right-hand
 column is what the builder renders internally, listed so you can check the component's own
-gotchas in COMPONENTS.md — **never so you can render it yourself.**
+gotchas (`node <skill>/scripts/components.js TextInput DatePicker`) — **never so you can
+render it yourself.** Those entries are written for this: each opens with an **In a form**
+line naming the pass-through props, and keeps only the traps that survive the builder.
 
 | Element in the design | `type:` | Builder renders |
 |---|---|---|
@@ -74,9 +95,9 @@ gotchas in COMPONENTS.md — **never so you can render it yourself.**
 | Date field (Gregorian/Hijri) | `'date'` | `DatePicker` |
 | Attachment picker | `'fileUpload'` | `FileUpload` (you still supply `onBrowse`/`onRemoveFile`) |
 | Section heading between field groups | `'section'` | `Label` |
-| "Verified ✓" style inline status line | `'status'` | `Label` + `Icon` |
+| "Verified ✓" style inline status line | `'status'` | `Label` + `Icon` (`iconSize` / `iconColor` / `labelType` / `labelStyle` / `containerStyle` override the defaults) |
 | Read-only label/value summary block | `'details'` | `CardDetails` + `Rows` |
-| Inline action button inside the form (e.g. "Verify with Nafath") | `'action'` | `Button` |
+| Inline action button inside the form (e.g. "Verify with Nafath") | `'action'` | `Button` (`size` defaults to `sm`; `buttonStyle` / `loading` / value-derived `disabled`) |
 | Nested/indented group of fields | `'group'` | `View` + recursive rendering |
 | Anything else | `'custom'` | your render function — see §3 |
 
@@ -102,7 +123,11 @@ common way features lose the render guarantees in §4:
 Take the FIRST rung that fits. Every rung down costs something; say in a comment which rung you
 took and why.
 
-**Rung 1 — a field type exists.** Config entry. Done. This is the answer ~95% of the time,
+**Rung 1 — a field type exists.** Config entry. Done. A field type whose *styling* is off
+(a `sm` action button where the design wants 44pt, a status row in the wrong tint) is still
+rung 1: add the optional prop to the shared config and pass the default through, the way
+`action.size` and `status.iconColor` were added — never escape to `custom` over a colour or a
+size, and never accept the deviation silently. This is the answer ~95% of the time,
 including for fields that look custom: a label that changes with another field is `visibleWhen`
 variants; a field that needs a lookup on blur is `commitOnBlur` + `onFieldChange`; a field
 disabled until an upload finishes is `disabled: (values) => …`.
@@ -184,9 +209,20 @@ dependency list — `t`, option arrays, and `useCallback`'d handlers. Nothing th
 keystroke may be a dependency. If a field must follow a form value, that is `visibleWhen` /
 `disabled(values)` / a `visibleWhen` variant — never a rebuild from the host.
 
-**4.3 Free-text fields commit on blur.** `commitOnBlur: true` renders `DraftTextInput`:
-keystrokes stay inside the leaf and the form hears the field once, on blur. Use it for every
-free-text field in a flow. Trade-off: `visibleWhen`, `isValid` and `onFieldChange` lag until
+**4.3 Free-text fields commit on blur — UNLESS something live reads them.** `commitOnBlur: true`
+renders `DraftTextInput`: keystrokes stay inside the leaf and the form hears the field once, on
+blur. Use it for every free-text field in a flow **whose value nothing on screen reacts to
+before submit**.
+
+The exception is not rare, so check it every time: a PageStepper step whose Next button is gated
+on step COMPLETENESS (rather than on a submit-time `validate()`), an `action` field with a
+value-derived `disabled`, and a `custom` field that mirrors a value (a password checklist) all
+read the store on every commit. Give any field they read a per-keystroke commit — with
+`commitOnBlur` the user types the last character, the button stays dead, and nothing on screen
+says that a blur is the missing step. Worse, a background tap does not reliably blur a focused
+RN input, so the user can be stuck. Establishment sign-up hit exactly this and commits every
+field per keystroke; the host still renders zero times, because `subscribeHost: false` keeps a
+keystroke inside its own field. Trade-off: `visibleWhen`, `isValid` and `onFieldChange` lag until
 blur; `validate()` / `validateFields()` / `flushDrafts()` commit still-focused drafts first, so
 submit handlers must read `getValues()` **after** the call, never the render-time `values`.
 
@@ -299,7 +335,8 @@ Alongside the usual controller-hook and render tests (DESIGN.md §2.4):
 - [ ] Anything off-table resolved through §3's ladder, with the rung named in a comment
 - [ ] `useFormBuilder({ …, subscribeHost: false })` on any screen with real chrome
 - [ ] `fields` built in a memoised `use<Flow>Fields` hook with only stable deps
-- [ ] Free-text fields are `commitOnBlur: true`
+- [ ] Free-text fields are `commitOnBlur: true` — except any field a live gate reads (a
+      completeness-gated Next button, a value-derived `disabled`, a mirroring `custom` field)
 - [ ] Handlers read `getValues()` / `getErrors()`, never the render snapshot
 - [ ] Uncontrolled mode; PageStepper store written once per step boundary
 - [ ] Controlled mode (if used) passes `onErrorsChange`

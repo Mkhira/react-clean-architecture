@@ -26,9 +26,20 @@ hand-built by Claude following [DESIGN.md](DESIGN.md).
 **Run every script from the TARGET REPO ROOT.** `<skill>` below means this skill's directory.
 
 - Spec schema: [SPEC_FORMAT.md](SPEC_FORMAT.md) · Audit details: [AUDIT.md](AUDIT.md)
+- Endpoint intake, question by question (Step 2): [INTAKE.md](INTAKE.md) — backend/full only
+- Review conventions for everything you hand-write (Step 4b): [REVIEW.md](REVIEW.md)
 - Design lane (Figma → screens → simulator verification): [DESIGN.md](DESIGN.md)
-- Forms (form-builder-first rule, coverage, render contract): [FORMS.md](FORMS.md) ·
-  Shared components: [COMPONENTS.md](COMPONENTS.md)
+- Forms (form-builder-first rule, coverage, render contract): [FORMS.md](FORMS.md)
+- Shared components: [COMPONENTS.md](COMPONENTS.md) — **read it through
+  `node <skill>/scripts/components.js`, not with a whole-file read.** No argument prints the
+  index (the "I need X → use Y" table); `components.js Card List PageHeader` prints those
+  entries verbatim and complete. Ask for every component the screen plausibly touches, and
+  more whenever you are unsure — there is no cap, and a skipped entry is how a duplicate
+  gets built.
+- Form builder API: `node <skill>/scripts/formref.js` — the repo's
+  `src/shared/formBuilder/HOW_TO_USE.md`, served the same way
+  (`formref.js "Text input" Dropdown Date`). [FORMS.md](FORMS.md) decides *whether* it is a
+  form and *which* field type; formref.js gives the exhaustive props behind that choice.
 - Filled example: [examples/feature-spec.example.json](examples/feature-spec.example.json),
   expected tree in `examples/expected-output/`
 
@@ -47,15 +58,17 @@ you're on. Every step still runs; only the narration is trimmed.
         @testing-library/react-native + jest.setup.js wiring; failure → logic tests + report)
 - [ ] 0c. Shared-component dictionary: node <skill>/scripts/check-components-md.js —
         WRITE an entry for every DRIFT before any component work (Step 4; procedure in
-        DESIGN.md "Keeping COMPONENTS.md current")
+        DESIGN.md "Keeping COMPONENTS.md current"). Read the dictionary by section:
+        node <skill>/scripts/components.js (index) → components.js <Name>... (full entries)
 - [ ] 0d. Any screen with inputs? → read FORMS.md; the form-first gate runs BEFORE the
-        component reuse gate on every such screen
+        component reuse gate on every such screen. Exhaustive builder props by section:
+        node <skill>/scripts/formref.js (index) → formref.js "Text input" Dropdown ...
 - [ ] 1. Feature name → new feature or append?  Git tree clean?
 - [ ] 1b. Mode: full (backend + design) / backend only / design only
-- [ ] 2. (backend, full) Single or multiple? → curls one-by-one (auto-EXECUTE for the
-        response; per GET: cache question; multi: "next or done?") → summary table → ONE user
-        story (skip/write; append: offer existing userStory/*.md first) → login/token
-        question  [one question per message]
+- [ ] 2. (backend, full) READ INTAKE.md, then follow it: single or multiple? → curls
+        one-by-one (auto-EXECUTE for the response; per GET: cache question; multi: "next or
+        done?") → summary table → ONE user story (skip/write; append: offer existing
+        userStory/*.md first) → login/token question  [one question per message]
 - [ ] 2b. Story given → save it to userStory/<StoryID>.md (skip → NO userStory/ dir)
 - [ ] 2c. (full, design) Screen collection: flow description preferred (screens + narrated
         transitions in one paste → ONE summary table with service-card defaults, single
@@ -80,7 +93,8 @@ you're on. Every step still runs; only the narration is trimmed.
 
 Checklist items 3–8 expand under "Step 3" / "Step 5 — Generate, fill, register, audit"
 below (Step 5's sub-items 1–5 are checklist items 4–8); the FORM-FIRST rule (FORMS.md),
-the REUSE-FIRST rule (Step 4 section) and the REVIEW CONVENTIONS (Step 4b) apply throughout
+the REUSE-FIRST rule (Step 4 section) and the REVIEW CONVENTIONS ([REVIEW.md](REVIEW.md))
+apply throughout
 Step 5–8b hand-writing.
 
 ## Context-compaction checkpoints (mandatory pauses)
@@ -146,7 +160,7 @@ Ask ONLY (one question, wait for the answer):
 
 > **What are we building?** 1. Full feature (backend + design) · 2. Backend only · 3. Design only
 
-- **Full** → Step 2 (endpoint intake), then Step 2c (screen collection), then generate/register/
+- **Full** → Step 2 (endpoint intake, [INTAKE.md](INTAKE.md)), then Step 2c (screen collection), then generate/register/
   audit, then the design lane (DESIGN.md).
 - **Backend only** → Step 2 onward exactly as before; no screen collection, no design lane.
 - **Design only** → skip Step 2 entirely (generate.js/register-di.js/audit.js never run — a
@@ -169,122 +183,14 @@ already on disk are reused silently.
 
 ## Step 2 — Endpoint intake (repeat per endpoint)
 
-**ONE QUESTION PER MESSAGE — this ordering is mandatory and unconditional** once Step 1b
-routes here (backend-only and full modes; design-only skips this step). It does not
-change based on Step 1's outcome (new feature, append, empty skeleton, dirty tree — none of
-that alters the intake order; report Step 1 results in one short line, not an analysis dump).
-Never bundle two questions into one message, and never invite combined answers like "paste
-the curl along with your choice". Ask, stop, wait for the answer, then ask the next.
+**Backend-only and full modes.** The full procedure — the mandatory one-question-per-message
+ordering, curl parsing, host classification, response capture by EXECUTING the curl, the GET
+cache question, the mock-backend lane, the user story and `userStory/` rules, and the login/
+token question — lives in **[INTAKE.md](INTAKE.md)**. Read it now and follow it exactly;
+the question ordering is not reconstructable from memory and getting it wrong re-asks the
+user things they already answered.
 
-The fixed sequence:
-
-1. Ask ONLY: **"Single or multiple endpoints?"** — nothing else in that message. Wait.
-2. Ask ONLY for the curl paste (or "no curl" → guided intake). Wait.
-3. **No response-body question** — capture the response by EXECUTING the curl (see
-   "Response capture" below). Not asked, just done.
-3b. GET endpoint → ask ONLY the **cache question**, with the two cache layers spelled out so
-   "no" isn't misread as "no caching at all":
-   > "How should this endpoint's responses be cached? 1. **no** — no device cache; react-query
-   > still keeps responses in memory for ~5 min (app-wide default) · 2. **always-fresh** —
-   > refetch on every visit, even the in-memory copy is bypassed (`staleTime: 0`; pick this
-   > for lists whose server data changes between visits) · 3. a **persistent device cache**:
-   > 6-hours / 8-hours / 12-hours / 24-hours / 2-days / 1-week (survives app restarts)"
-   → the endpoint's `cache` field (`null` / `"always-fresh"` / the duration). Non-GET: skip,
-   never ask.
-4. Multiple mode: ask **"next curl, or done?"** — on "next", loop back to 2 for the next
-   endpoint. Single mode: skip this.
-5. When all curls are in ("done", or the single curl is captured): show the endpoint summary
-   table (user can say "edit #N"), then ask the **user story** question — ONCE for the whole
-   feature, with an explicit **"skip"** option. In multi mode you map the story's rules onto
-   each endpoint's use case; endpoints the story doesn't cover get pass-through + `// TODO`.
-6. After the story question (backend-only and full modes ONLY): ask ONLY the **login
-   question** — "does this feature require login?" If yes, ask for an access token in the NEXT
-   message. The token is used at runtime only (curl execution, simulator verification via
-   `setAuthToken`/MMKV `authToken`) — it NEVER lands in any file; secret-hygiene enforces
-   this. A login-required feature also gets `requiresAuth: true` in its SERVICES_DATA entry
-   (design lane).
-
-**MOCK BACKEND (spec.mock: true) — first-class lane, not improvisation.** When the user says
-the backend doesn't exist yet ("use mock backend", "API not ready", "mock for now") — in the
-initial request or at any intake point — set top-level `"mock": true` in the spec and confirm
-it in one line. Consequences: (a) there is no live API, so **response capture cannot execute
-the curl** — ask for a sample response, or (with the user's explicit OK, as in the
-ApplicationStatus run) derive a realistic sample from the Figma screens/story and confirm it;
-(b) generate.js emits `data/services/<Feature>MockService.ts` — sample DTOs flowing through
-the REAL mappers — and register-di.js registers the MOCK for `TOKENS.<Feature>Service` with a
-swap comment (the real service class is still generated, unreferenced, ready for the swap);
-(c) YOU enrich the mock's sample catalog in Step 5.3 (filters, states, pagination — every
-filter-sheet option should have matching items); (d) DESIGN.md §1's mock question is
-pre-answered — never ask it again; (e) the final report states the one-line swap. The mock
-seam is the SERVICE interface — never mock at the repository or query layer, that would
-bypass the mappers.
-
-**YES — curl path (target: ONE paste per endpoint — the curl itself):**
-1. Paste → save to a scratch file → `node <skill>/scripts/parse-curl.js <file>`.
-   Detection is loose: `--header`/`-H`/`--data`/`-d`/`--body` + a URL counts — no literal
-   `curl` prefix required (Postman exports start with other text).
-   Broken paste → the script reports what's found/missing; re-ask.
-   `multipart: true` → reject: "not supported yet — add manually using IHttpClient.upload()".
-2. **Host classification** — resolve the app's hosts from `.env.development` (fallback: the
-   literal defaults in `src/core/config/ConfigService.ts`):
-   - Matches `EXPO_PUBLIC_API_URL` (host + path prefix) → `hostType: "app"`. **Strip the
-     base-URL path prefix from the endpoint path** (apiUrl `…/test/third-party/` + curl
-     `…/test/third-party/v2/x` → path `/v2/x`), or URLs double the prefix.
-   - Matches `EXPO_PUBLIC_INTERNAL_BASE_URL` / `EXPO_PUBLIC_BFF_BASE_URL` → `hostType:
-     "external"` but **reuse the existing config fields** (`internalBaseUrl`/`baseUrl`) —
-     no new env keys, omit `baseUrl.envKey`/`devValue`.
-   - Anything else → `hostType: "external"` with a new `EXPO_PUBLIC_<FEATURE>_BASE_URL`.
-3. Numeric/UUID path segments → propose them as path params, user confirms which are dynamic.
-4. **Response capture — EXECUTE the curl, don't ask.** The live payload beats a hand-typed
-   sample, so run the pasted curl and capture the real response:
-   - **GET**: execute immediately, no question.
-   - **POST/PUT/DELETE**: one-line confirmation first — the call hits the real API and may
-     mutate state; get an explicit yes before running.
-   - Model the `data` object when the response arrives in the app's `ApiResponse`
-     `{header, data}` envelope. Any token in the paste is used for the call ONLY — it never
-     lands in a file (secret-hygiene enforces this).
-   - **Fallback (only if execution fails** — network/auth error, non-JSON, empty body, or the
-     user declined a mutating call): then ask — paste a sample JSON response, or "none"
-     (endpoint returns nothing useful → `Result<void, …>`).
-
-**NO — guided manual path** (one question per message here too): URL → app or external host?
-→ custom headers (paste or "none") → method (GET/POST/PUT/DELETE) → request body JSON or
-"none" (POST/PUT) / query+path params (GET/DELETE) → response body (no curl to execute, so
-ASK: paste a sample or "none") → back into the fixed sequence (next-curl loop / user story).
-
-**Response shape rules (both paths):**
-- `"none"` → use case returns `Result<void, FeatureError>`; no ResponseDTO, no `toDomain`.
-- Top-level array `[...]` supported (array DTO + entity list).
-- `null` values / empty `[]` → ask the user the type; unanswered → `unknown` + audit warning.
-- Non-JSON / multipart / uploads → reject in v1 (message above).
-- Endpoint path already present in ANY other feature (audit greps too) → warn, continue/cancel.
-
-**User story:** asked ONCE per run, after all curls are captured (sequence step 5) — options:
-write it, or **skip**. Drives use-case names, `execute()` validation, error codes; kept as a
-doc comment on the use case(s). Skipped → pass-through + `// TODO`. NEVER invent a story
-silently: made-up validation is worse than none. Arabic strings in the story flow into
-`translations/ar.ts`.
-
-**userStory/ directory:** story given → create `src/features/<feature-dir>/userStory/` and save
-the FULL story text verbatim as one `.md` file per story, named by its story ID when it has
-one (e.g. `ERD-PBM-001.md`); no ID → sequential fallback (`userStory-1.md`, `userStory-2.md`,
-…). Story skipped → do NOT create the directory. In append mode a new story gets its OWN file
-alongside the existing ones — never overwrite or delete a previous story file. (Create the
-directory by hand — the scripts don't manage it; audit's structure check ignores extra dirs.)
-
-**STORY IS THE CONTRACT:** once a story exists for the endpoint(s) — given this run or reused
-from `userStory/` — ALL hand-written work (validation rules, error codes, status mappings,
-screen behavior, translations) must follow it. Anything the story does NOT cover — extra
-validation, renamed labels, added behavior, design deviations — ASK the user first; never
-improvise beyond pass-through + `// TODO`.
-
-**Multi mode:** after each curl is captured, ask **"next curl, or done?"**. On "done" show the
-summary table of ALL endpoints (user can say "edit #N"), then the single user story question,
-then the Step 3 confirmation tables.
-
-**PUT/DELETE:** `IHttpClient` has them commented out. If the spec needs one, YOU edit
-`src/core/http/IHttpClient.ts` + `HttpClientService.ts` by hand, mirroring the existing
-`get`/`post` implementations (one-time, owner-approved core edit — mention it in the report).
+Design-only mode skips this step entirely.
 
 ## Step 2c — Screen collection (full and design modes)
 
@@ -331,10 +237,23 @@ building any screen with inputs; its §4 render contract (`subscribeHost: false`
 `fields` identity, `commitOnBlur`) is not optional.
 
 Before writing ANY component, the same rule runs against `@shared/components` through
-[COMPONENTS.md](COMPONENTS.md) — and that file only works if it is current. Other teams add
-shared components between skill runs, and a component missing from the dictionary is
-invisible to the gate: Claude concludes "no shared match" and hand-builds a duplicate. So
-**whenever you are about to build or audit components, run**
+[COMPONENTS.md](COMPONENTS.md). **Read it with the reader script, in two moves** — the file is
+~75KB and a whole-file read costs more than the screen you are building:
+
+    node <skill>/scripts/components.js                    # index: "I need X → use Y"
+    node <skill>/scripts/components.js Card List Modal     # those entries, verbatim
+
+The index is what the gate decides on; the entries are what you build from. This is
+retrieval, NOT a budget — pull every component the screen plausibly touches, and pull more
+whenever you are unsure. Extra entries cost you nothing; a component you failed to look up is
+a hand-built duplicate a reviewer sends back. `--list` shows all 64 names, `--all` prints the
+whole file. A name with no entry prints a MISS, never silence: "no output" must never be read
+as "no shared component exists".
+
+The dictionary only works if it is current. Other teams add shared components between skill
+runs, and a component missing from it is invisible to the gate: Claude concludes "no shared
+match" and hand-builds a duplicate. So **whenever you are about to build or audit
+components, run**
 
     node <skill>/scripts/check-components-md.js [--repo <path>]
 
@@ -347,63 +266,10 @@ COMPONENTS.md entry and its `HOW_TO_USE.md` in the same change.
 
 ## Step 4b — REVIEW CONVENTIONS (mandatory for everything you hand-write)
 
-Every rule below comes from a real PR review round on this repo — each one was raised by a
-human reviewer against skill-generated code. `audit.js`'s `review-conventions` check
-enforces the mechanical ones; the rest are on you. Apply them to hand-written code in
-Steps 5–8b and to any screen you build in the design lane.
-
-**Single source of truth for enums.** A status/type value list lives in
-`domain/constants/<featureCamel>.ts` and NOWHERE else. The entity union derives from it
-(`(typeof VALUES)[number]`), mappers validate against it, mock catalogs iterate it, and
-filter/tab options map over it. If you catch yourself typing the same
-`['DRAFT', 'SUBMITTED', …]` a second time — in a mapper, a mock, a controller, a card
-component — import it instead. This applies to any repeated literal set, not just statuses.
-
-**Errors reuse `AppError`.** `src/shared/types/errors.ts` owns the code union
-(`NETWORK_ERROR | AUTH_ERROR | TIMEOUT | VALIDATION_ERROR`). Never invent feature codes
-(`HTTP_ERROR`, `PARSE_ERROR`) and never widen with `Omit<AppError, 'code'>`. Map real
-failures onto the existing four: a malformed payload is `VALIDATION_ERROR`, a bad HTTP
-response is `NETWORK_ERROR`. A genuinely new code goes into `AppError` itself, where every
-feature shares it — and that is a core edit, so ask first.
-
-**Never swallow a failure.** Every `catch` that converts to `Result.err` logs first via the
-injected `ILogger` (`this.logger.exception(...)`). Use cases take the logger as a
-constructor arg; `register-di.js` wires it through `withLogger`.
-
-**Presentation file placement.** Magic numbers, key arrays, debounce delays, tag/variant
-maps → `presentation/constants.ts`. Prop and state types → `presentation/types.ts`. Data
-fetching, derived values, `renderItem`/`keyExtractor`/`pagination` memos, and every
-handler → the controller; screens receive finished values and render them. A screen that
-computes anything beyond JSX has logic in the wrong file.
-
-**Forms go through the form builder.** Any screen with inputs uses `@shared/formBuilder`:
-config array in a memoised `use<Flow>Fields` hook, `useFormBuilder` in the controller,
-`<FormBuilder {...formProps} />` in the screen with zero input JSX. Field-dependent behaviour
-is `visibleWhen` / `disabled(values)` / `visibleWhen` variants — not a config rebuilt from the
-host, and not host state. Render contract: `subscribeHost: false` on a screen with chrome,
-`commitOnBlur: true` on free-text fields, `getValues()`/`getErrors()` in handlers instead of
-the render snapshot, the PageStepper store written once per step boundary. Full rules and the
-escape-hatch ladder: [FORMS.md](FORMS.md). Reviewers have rejected hand-wired forms on the same
-grounds as hand-rebuilt shared components.
-
-**No dead modules.** Never leave a placeholder file nothing imports — reviewers flag it
-immediately ("this is not used at all"). Create `constants.ts` / `types.ts` when there is
-real content for them, not preemptively.
-
-**Theme tokens only in styles.** No raw numbers or RN keyword strings in a `styles.ts`:
-`flex: theme.flex1`, `display: theme.display.none`, `flexDirection: theme.flexDirection.row`,
-spacing/radius/typography from their scales. If a token genuinely doesn't exist, ADD it to
-`src/core/theme/baseStyles.ts` and the `Theme` type in `src/core/theme/types.ts`, then use
-it — that is the reviewers' stated preference over a raw value.
-
-**Text uses `Label` presets.** Prefer `<Label type="…">` (`defaultParagraph`, `cardTitle`,
-`h1Header`, `h2Header`, `labelName`, `fieldLabelName`, `fieldInput`) over restating
-`fontSize`/`lineHeight` in a style. Override in the style only the property no preset
-carries (e.g. a SemiBold weight at a size no type provides) and say why in a comment.
-
-**One translation object per service.** The service's title/description live at
-`services.<camel>.*` and the page registry points there. Never add a second copy under
-`serviceFlow.pages.<camel>` — two objects drift apart and reviewers reject the duplicate.
+Every rule comes from a real PR review round on this repo. They live in
+**[REVIEW.md](REVIEW.md)** — read it before hand-writing use-case rules (Step 5.3), screens,
+components or controllers, and keep it in view while you do. `audit.js`'s
+`review-conventions` check enforces the mechanical ones; the rest are on you.
 
 ## Step 5 — Generate, fill, register, audit
 

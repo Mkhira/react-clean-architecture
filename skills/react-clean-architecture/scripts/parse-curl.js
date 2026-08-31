@@ -197,7 +197,11 @@ function main() {
 }
 
 if (require.main === module) {
-    process.exit(main());
+    // NOT process.exit(): stdout writes to a PIPE are asynchronous and exiting
+    // truncates what is still buffered (found 2026-09-01 in components.js, which
+    // lost ~10KB off a 76KB --all through a captured pipe while a file redirect
+    // looked perfect). Compact stdout hides it; verbatim failure output would not.
+    process.exitCode = main();
 }
 
 module.exports = { parse, tokenize };
