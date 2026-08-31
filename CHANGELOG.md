@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.15.1 — fix: `plugin.json` failed schema validation on install
+
+`/plugin install` rejected the plugin on a second machine:
+
+```
+Validation errors: author: Invalid input: expected object, received string
+```
+
+`plugin.json` carried `"author": "Mkhira"`. The schema wants an object
+(`{ name, url }`) — the same shape `marketplace.json` already used for its `owner`
+field, which is why only the plugin manifest failed. Nothing but the manifest was
+wrong; no install path or skill content was affected.
+
+The bug shipped in 1.8.0 and survived six releases because the manifests were only
+ever version-bumped, never re-validated against an actual install on a clean machine.
+
+SKILL_VERSION → 1.15.1.
+
 ## 1.15.0 — the form builder is the default for every screen with inputs
 
 New doc [FORMS.md](skills/react-clean-architecture/FORMS.md). The app's shared form engine
