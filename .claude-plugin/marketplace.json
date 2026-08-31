@@ -4,6 +4,7 @@
     "name": "Mkhira",
     "url": "https://github.com/Mkhira"
   },
+  "description": "Agent tooling for React Native (Expo) codebases that follow clean architecture — feature scaffolding driven by deterministic scripts rather than the model, and a Figma-to-screen design lane verified on the iOS simulator.",
   "plugins": [
     {
       "name": "react-clean-architecture",
