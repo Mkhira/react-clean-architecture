@@ -1,5 +1,70 @@
 # Changelog
 
+## 1.17.0 — reference docs served by section; SKILL.md split; cropped re-verification
+
+Second half of the pass a first run costing ~92k tokens started. Everything here changes how
+content is **retrieved**; nothing caps what may be read, and the run-time instructions now say
+so in those words.
+
+`scripts/docref.js` is a generic section reader: the index is everything before the first `##`
+that has `###` children, a `##` with `###` children is a group label, and a `##` without them
+is a section in its own right. `components.js` and the new `formref.js` are thin wrappers.
+Generalising it caught a real defect — a standalone `##` did not end the running group, so
+`HOW_TO_USE.md` listed "Conditional visibility" under "Field configuration reference" and
+"Import path" under "Controlled vs uncontrolled", a listing that sends the reader to the wrong
+section.
+
+`scripts/formref.js` serves the repo's `src/shared/formBuilder/HOW_TO_USE.md` the same way
+FORMS.md used to demand whole: 23,730 chars for what is 28 sections, of which a form screen
+needs three or four.
+
+SKILL.md 34,153c → 23,044c. Step 2 (endpoint intake) → `INTAKE.md`, never read in design-only
+mode; Step 4b (review conventions) → `REVIEW.md`, read before hand-writing. The same lazy
+pattern as APPEND.md and LIFECYCLE.md, and each is read in full when its phase starts. Verified
+mechanically: 105 + 48 content lines moved, none lost.
+
+DESIGN.md §3 — re-verification shots crop to the region changed (`sips -c`). A booted-simulator
+screenshot is 1320×2868, which the API resizes to 722×1568, so a six-screen feature spends more
+on images than on every skill document combined. The **comparison** shots stay at full
+resolution: that is what pixel accuracy rests on, and shrinking them was explicitly rejected.
+Only the re-check after a fix crops, because a full frame to confirm a 4px gap adds nothing
+already approved. Anything not yet judged gets the full frame, and unsure means take the full
+frame.
+
+No token-cost framing survives in any run-time instruction. 1.16.0's own wording ("entries are
+~250-600 tokens each") was exactly the nudge that biases toward reading less; a test now fails
+on a numeric token cost or on cap language, scoped so it does not trip on "theme tokens".
+
+Fix, all 13 scripts: `process.exit(main())` truncated buffered stdout on a **pipe** —
+`components.js --all` lost ~10KB of 76KB when captured, while a shell redirect to a file looked
+perfect. Now `process.exitCode`. `audit.js` prints failures verbatim and can cross the 64KB pipe
+buffer, so a silently truncated audit was reachable.
+
+Tests 149 → 171. SKILL_VERSION → 1.17.0.
+
+## 1.16.0 — COMPONENTS.md on demand; the nine builder-owned entries trimmed
+
+Reverses one earlier decision, at the owner's explicit request: COMPONENTS.md is now served by
+`scripts/components.js` — the "I need X → use Y" index by default, full **byte-identical**
+entries by name — instead of read whole at the reuse gate. Retrieval, not summarisation:
+`--all` still prints everything, `--list` names all 64, and a name with no match prints a loud
+MISS with the drift command, because silence read as "no shared match" is how `ContactOtpSheet`
+came to be duplicated.
+
+The nine components the form builder renders (`TextInput`, `DropdownInput`, `Dropdown`,
+`DropdownItem`, `OptionGroup`, `Checkbox`, `Radio`, `DatePicker`, `FileUpload`) are trimmed to
+**In a form** / **Outside a form** / **Traps** — the builder owns their props now. They keep
+what survives it: the variant list (those are the field config's `variant` values),
+`titleSpacing`/`itemSpacing`, `DEFAULT_DATE_FORMAT`, Dropdown's null-when-hidden Android fix,
+FileUpload being presentational. Headings are kept so `check-components-md.js` still matches,
+and the "outside a form" half stays because a list-header search box and a filter dropdown are
+not forms.
+
+Considered and rejected on measurement: deleting the component reference and reading
+`src/shared/components` when needed. That directory is roughly nine times the dictionary — the
+`List` organism alone is more than half of it — the builder covers 9 of 64 components, and the
+sources carry none of the traps the entries exist for.
+
 ## 1.15.2 — full plugin metadata, validated against the published schema
 
 Adds `homepage`, `repository`, `license` (MIT) and `keywords` to `plugin.json`, plus a

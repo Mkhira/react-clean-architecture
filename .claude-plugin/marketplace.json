@@ -9,7 +9,7 @@
       "name": "react-clean-architecture",
       "source": "./",
       "description": "Scaffold complete clean-architecture features in a React Native (Expo) app from a curl paste — script-driven generation, tsyringe DI/i18n/config/env wiring, self-audit — plus a Figma design lane that builds pixel-accurate RTL screens verified on the iOS simulator.",
-      "version": "1.15.2"
+      "version": "1.17.0"
     }
   ]
 }
