@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.15.2 — full plugin metadata, validated against the published schema
+
+Adds `homepage`, `repository`, `license` (MIT) and `keywords` to `plugin.json`, plus a
+`$schema` pointer so an editor validates the file on save — the class of mistake that
+caused 1.15.1 now gets caught while typing rather than on someone else's machine.
+
+Field types were confirmed two ways before committing, rather than assumed: a survey of 75
+installed plugin manifests on a working machine (`author` object in 71/71; `homepage`,
+`repository`, `license` strings; `keywords` array), and the published schema itself at
+`schemastore.org/claude-code-plugin-manifest.json`, which lists `name` as the only required
+field and matches every type used here.
+
+SKILL_VERSION → 1.15.2.
+
 ## 1.15.1 — fix: `plugin.json` failed schema validation on install
 
 `/plugin install` rejected the plugin on a second machine:

@@ -1,11 +1,29 @@
 {
+  "$schema": "https://www.schemastore.org/claude-code-plugin-manifest.json",
   "name": "react-clean-architecture",
   "description": "Scaffold complete clean-architecture features in a React Native (Expo) app from a curl paste — script-driven generation, tsyringe DI/i18n/config/env wiring, self-audit — plus a Figma design lane that builds pixel-accurate RTL screens verified on the iOS simulator.",
-  "version": "1.15.1",
+  "version": "1.15.2",
   "author": {
     "name": "Mkhira",
     "url": "https://github.com/Mkhira"
   },
+  "homepage": "https://github.com/Mkhira/react-clean-architecture",
+  "repository": "https://github.com/Mkhira/react-clean-architecture",
+  "license": "MIT",
+  "keywords": [
+    "react-native",
+    "expo",
+    "clean-architecture",
+    "scaffolding",
+    "tsyringe",
+    "dependency-injection",
+    "figma",
+    "design-to-code",
+    "form-builder",
+    "i18n",
+    "rtl",
+    "code-generation"
+  ],
   "skills": [
     "./skills/react-clean-architecture"
   ]
