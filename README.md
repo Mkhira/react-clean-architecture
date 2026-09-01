@@ -2,7 +2,7 @@
 
 > An [Agent Skill](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview) that scaffolds **complete clean-architecture features** in a React Native (Expo) app from a single curl paste — and builds their **pixel-accurate screens from Figma**, verified live on the iOS simulator.
 
-![version](https://img.shields.io/badge/version-1.14.1-blue) ![tests](https://img.shields.io/badge/tests-149%20passing-brightgreen) ![deps](https://img.shields.io/badge/dependencies-zero-lightgrey) ![node](https://img.shields.io/badge/node-%E2%89%A518-339933) ![license](https://img.shields.io/badge/license-MIT-yellow)
+![version](https://img.shields.io/badge/version-1.17.0-blue) ![tests](https://img.shields.io/badge/tests-171%20passing-brightgreen) ![deps](https://img.shields.io/badge/dependencies-zero-lightgrey) ![node](https://img.shields.io/badge/node-%E2%89%A518-339933) ![license](https://img.shields.io/badge/license-MIT-yellow)
 
 Works with **Claude Code**, **Cursor**, **OpenAI Codex CLI**, and any agent that reads `AGENTS.md` / Markdown skills. One [install script](#install), three tools.
 
@@ -25,6 +25,8 @@ src/features/<feature-dir>/          kebab-case directory; identifiers stay Pasc
 
 **Accuracy and low token usage.** The LLM hand-writes only the spec and the use-case business rules. Everything mechanical is done by dependency-free Node scripts whose code never enters the context window — only their compact output does. Generation is idempotent (anchor comments), never overwrites, and refuses bad specs up front.
 
+The long reference documents work the same way. The shared-component dictionary and the form-builder API are **retrieved by section** (`scripts/components.js`, `scripts/formref.js`) instead of being read whole, and the phase-specific docs — endpoint intake, review conventions, the design lane — load when their phase starts. Sections come back byte-identical to the file and `--all` prints everything: this changes *when* a document is read, never how much of it the agent is allowed to read.
+
 ---
 
 ## The pipeline
@@ -37,7 +39,7 @@ flowchart LR
     D --> E["generate.js<br/>all feature files"]
     E --> F["hand-written<br/>use-case rules"]
     F --> G["register-di.js<br/>DI · i18n · config · env"]
-    G --> H["audit.js<br/>tsc diff · jest · 15 checks"]
+    G --> H["audit.js<br/>tsc diff · jest · 16 checks"]
     H -->|pass| I["persisted spec<br/>append-ready"]
     H -->|fail| F
 ```
