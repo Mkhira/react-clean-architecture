@@ -42,6 +42,31 @@ buffer, so a silently truncated audit was reachable.
 
 Tests 149 → 171. SKILL_VERSION → 1.17.0.
 
+**Release plumbing shipped with it.** `SKILL_VERSION` is internal — `audit.js` stamps it into
+persisted specs — and bumping it alone leaves installed users with nothing to update to: the
+version the Claude Code plugin system reads lives in `.claude-plugin/plugin.json` and
+`marketplace.json`, and both were still on 1.15.2. Both now say 1.17.0, and `claude plugin
+validate .` passes with no warnings after adding the top-level marketplace `description` it
+had been missing (written to describe the marketplace, not repeat the plugin description a few
+lines below it).
+
+**README.** A new **Update** section, one row per install path, because the file covered
+installing and never updating. The plugin row spells out that `/plugin marketplace update`
+must run *before* `/plugin update` — the refresh is what re-reads `marketplace.json` and sees
+the new version — and that a restart is required to apply. The symlinked `install.sh` case
+needs nothing at all, which is the common one. Manual copies now carry a warning to copy the
+whole directory: `SKILL.md` is a router that defers to `INTAKE.md`/`REVIEW.md` and calls
+`scripts/` by path, so a partial copy leaves it pointing at files that are not on disk.
+
+Corrections in the same pass, all of them things this release made wrong: the documentation map
+gained `INTAKE.md` and `REVIEW.md`, and `SKILL.md`'s description stopped claiming to hold the
+intake protocol and review conventions, which it no longer does; the scripts table gained
+`docref.js`, `components.js` and `formref.js`; the badges moved from 1.14.1 / 149 tests to
+1.17.0 / 171. The pipeline diagram said `audit.js — 15 checks` while the scripts table said 16;
+AUDIT.md documents 16, so the diagram was undercounting — `i18n-keys` contains digits and is
+missed by the obvious `[a-z-]+` grep for check names, which is likely how it drifted in the
+first place.
+
 ## 1.16.0 — COMPONENTS.md on demand; the nine builder-owned entries trimmed
 
 Reverses one earlier decision, at the owner's explicit request: COMPONENTS.md is now served by
