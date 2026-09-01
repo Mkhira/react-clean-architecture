@@ -120,15 +120,28 @@ npx skills@latest add Mkhira/react-clean-architecture
 
 Pick your agent when prompted (Claude Code, Cursor, Windsurf, Codex, …) — it installs into the right place automatically. The skill lives at [`skills/react-clean-architecture/`](skills/react-clean-architecture/) in the standard Agent-Skills layout.
 
+This installs it **as a skill**, which is how it is meant to be used: it appears as `/react-clean-architecture`, and the agent also picks it up on its own from a plain request ("create a feature from this curl…"). Every install below except the plugin one does the same.
+
 > This path installs the skill files only — it never runs `install.sh`, so follow up with the
 > [touch-tools step](#simulator-touch-tools-idb) to get tap-driven verification.
 
-### Claude Code — native plugin
+### Claude Code — native plugin (alternative)
+
+Run these as **two separate commands**, not one line — the second is not part of the first's argument:
 
 ```
 /plugin marketplace add Mkhira/react-clean-architecture
+```
+
+```
 /plugin install react-clean-architecture@react-clean-architecture
 ```
+
+> **This is the one path that does not give you a plain `/react-clean-architecture`.** Claude
+> Code namespaces plugin-provided skills as `<plugin>:<skill>`, so it appears as
+> `/react-clean-architecture:react-clean-architecture` — same files, same behavior, longer
+> name. Prefer the [skill install](#universal-any-agent-user-wide--recommended) above unless
+> you specifically want `/plugin update` to manage it.
 
 > Skill files only — follow up with the [touch-tools step](#simulator-touch-tools-idb).
 
