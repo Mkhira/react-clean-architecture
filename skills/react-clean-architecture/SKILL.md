@@ -53,7 +53,9 @@ Do NOT paste the whole checklist into chat messages on every update — name onl
 you're on. Every step still runs; only the narration is trimmed.
 
 ```
-- [ ] 0. Baseline: node <skill>/scripts/audit.js --baseline
+- [ ] 0. Update check: node <skill>/scripts/check-update.js — UPDATE AVAILABLE → tell the
+        user before your first question, then continue the run ("Update check" section below)
+- [ ] 0a. Baseline: node <skill>/scripts/audit.js --baseline
 - [ ] 0b. Test infra: node <skill>/scripts/setup-test-infra.js (auto-installs
         @testing-library/react-native + jest.setup.js wiring; failure → logic tests + report)
 - [ ] 0c. Shared-component dictionary: node <skill>/scripts/check-components-md.js —
@@ -90,6 +92,33 @@ you're on. Every step still runs; only the narration is trimmed.
 - [ ] 9. Final report to the user (Step 6 section; full/design: include the design-lane
         bullets)
 ```
+
+## Update check (checklist item 0 — runs on EVERY run, before anything else)
+
+```
+node <skill>/scripts/check-update.js
+```
+
+One line back, and the first word says everything: **UP TO DATE** (say nothing, go to 0a) ·
+**UPDATE CHECK SKIPPED** (offline or no git — say nothing, go to 0a) · **UPDATE AVAILABLE**.
+
+On UPDATE AVAILABLE, put it in your FIRST message to the user — before the mode question,
+before any other Step-0 output — as two or three plain lines: the versions (`1.17.0 → 1.18.0`),
+the update command the script printed for their install, and that this run continues on the
+version they have. Then carry on with 0a immediately. Repeat the same notice in the final
+report (Step 6).
+
+Non-negotiables:
+
+- **Never block on it.** The user does not have to update to run the skill, and an update
+  mid-run would swap the scripts under a half-finished feature. Offer it, continue working.
+- **Never update the skill yourself** — no `git pull`, no `/plugin update`, no re-running
+  `install.sh`. It is their install; the command is theirs to run, between runs.
+- **Never suppress it.** There is deliberately no "dismissed" state: if they say "later" or
+  ignore it, tell them again on the next run, and every run after that, until the versions
+  match. Saying it once and going quiet is how a copy stays six versions behind.
+- **Never ask a question about it.** It is a notice inside your first message, not a
+  question — it does not consume the one-question-per-message turn that Step 1b owns.
 
 Checklist items 3–8 expand under "Step 3" / "Step 5 — Generate, fill, register, audit"
 below (Step 5's sub-items 1–5 are checklist items 4–8); the FORM-FIRST rule (FORMS.md),
@@ -331,6 +360,11 @@ translations flagged for Corporate Communication review. And navigation:
   DESIGN.md's registration checklist). New route paths are not in the typed-routes union
   until the next `expo start` regenerates it — use an `as Href` cast temporarily and note it
   in the report.
+
+**Skill update**: if checklist item 0 reported UPDATE AVAILABLE, close the report with the
+same two lines (versions + their update command) — the end of a run is when acting on it is
+actually safe. Nothing else about the report changes; the work above was done on the
+installed version and stands.
 
 ## Feature lifecycle (remove / rename / migrate)
 

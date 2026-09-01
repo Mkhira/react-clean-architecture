@@ -2,7 +2,7 @@
 
 > An [Agent Skill](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview) that scaffolds **complete clean-architecture features** in a React Native (Expo) app from a single curl paste — and builds their **pixel-accurate screens from Figma**, verified live on the iOS simulator.
 
-![version](https://img.shields.io/badge/version-1.17.0-blue) ![tests](https://img.shields.io/badge/tests-171%20passing-brightgreen) ![deps](https://img.shields.io/badge/dependencies-zero-lightgrey) ![node](https://img.shields.io/badge/node-%E2%89%A518-339933) ![license](https://img.shields.io/badge/license-MIT-yellow)
+![version](https://img.shields.io/badge/version-1.18.0-blue) ![tests](https://img.shields.io/badge/tests-189%20passing-brightgreen) ![deps](https://img.shields.io/badge/dependencies-zero-lightgrey) ![node](https://img.shields.io/badge/node-%E2%89%A518-339933) ![license](https://img.shields.io/badge/license-MIT-yellow)
 
 Works with **Claude Code**, **Cursor**, **OpenAI Codex CLI**, and any agent that reads `AGENTS.md` / Markdown skills. One [install script](#install), three tools.
 
@@ -182,7 +182,9 @@ cp -R skills/react-clean-architecture ~/.claude/skills/
 
 ### Update
 
-The current release is **1.17.0** ([CHANGELOG](CHANGELOG.md)). How you update depends on how you installed:
+The current release is **1.18.0** ([CHANGELOG](CHANGELOG.md)). **The skill tells you itself**: every run starts with `scripts/check-update.js`, which compares your installed version against the newest release tag and, when you are behind, prints the versions and the update command for your install before the first question. It never blocks the run, never updates anything on its own, and has no "dismiss" — it says it again on every run until you update. Offline, or without `git`, the check is skipped silently.
+
+How you update depends on how you installed:
 
 | Installed with | Update with |
 |---|---|
@@ -194,7 +196,7 @@ The current release is **1.17.0** ([CHANGELOG](CHANGELOG.md)). How you update de
 
 Updating never needs the [touch-tools step](#simulator-touch-tools-idb) again — `idb` is independent of the skill files.
 
-Not sure which version you have? `grep version <skill-dir>/../../.claude-plugin/plugin.json` for plugin installs, or check `SKILL_VERSION` in `scripts/generate.js`, which is also stamped into every `feature-spec.json` the skill persists.
+Not sure which version you have? `node <skill-dir>/scripts/check-update.js` prints it along with the newest release. That version is the `SKILL_VERSION` constant in `scripts/generate.js` — the same number as the plugin manifests, and the one stamped into every `feature-spec.json` the skill persists.
 
 ### Usage
 
@@ -210,7 +212,7 @@ or for screens only:
 
 > `/react-clean-architecture` I need to append on src/features/tax-stamp-validation — design mode only
 
-The agent walks the checklist in [SKILL.md](skills/react-clean-architecture/SKILL.md): intake → test-infra check (auto-installs `@testing-library/react-native` on first run) → confirmation tables → generate → register → audit → (design lane) → final report. At three points — after the intake confirmation, after each per-screen checkpoint, and after the audit passes — it pauses and asks you to run your host's compaction command (`/compact`, `/summarize`, …); everything needed to resume is on disk before the pause, so a long run never depends on chat history. Appending an endpoint or a screen to a feature the skill built earlier is automatic — the persisted spec provides full prior context, no re-asking. The mock-backend lane generates a `MockService` behind the real service interface; swapping to the live API later is a one-line DI change (the swap comment is generated with it).
+The agent walks the checklist in [SKILL.md](skills/react-clean-architecture/SKILL.md): [update check](#update) → intake → test-infra check (auto-installs `@testing-library/react-native` on first run) → confirmation tables → generate → register → audit → (design lane) → final report. At three points — after the intake confirmation, after each per-screen checkpoint, and after the audit passes — it pauses and asks you to run your host's compaction command (`/compact`, `/summarize`, …); everything needed to resume is on disk before the pause, so a long run never depends on chat history. Appending an endpoint or a screen to a feature the skill built earlier is automatic — the persisted spec provides full prior context, no re-asking. The mock-backend lane generates a `MockService` behind the real service interface; swapping to the live API later is a one-line DI change (the swap comment is generated with it).
 
 ---
 
@@ -238,6 +240,7 @@ The agent walks the checklist in [SKILL.md](skills/react-clean-architecture/SKIL
 
 | Script | Job |
 |---|---|
+| `scripts/check-update.js` | Step 0 release check — newest `v*` tag vs the installed `SKILL_VERSION`, with the update command for this install (`--force`, `--no-network`, `--strict`) |
 | `scripts/parse-curl.js` | tolerant curl/Postman paste → structured JSON |
 | `scripts/json-to-dto.js` | sample JSON → TypeScript DTO declarations |
 | `scripts/generate.js` | spec → every feature file (validates spec; never overwrites; append via anchors) |
@@ -258,7 +261,7 @@ Paths are relative to [`skills/react-clean-architecture/`](skills/react-clean-ar
 
 ## Testing the skill itself
 
-171 tests on Node's built-in runner — still zero dependencies:
+189 tests on Node's built-in runner — still zero dependencies:
 
 ```bash
 node --test skills/react-clean-architecture/tests/*.test.js

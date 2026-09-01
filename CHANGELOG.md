@@ -1,5 +1,44 @@
 # Changelog
 
+## 1.18.0 — the skill tells you when it is out of date
+
+`scripts/check-update.js` runs as checklist item 0, before the tsc baseline, on every run. It
+compares the installed `SKILL_VERSION` against the newest `v*` tag on GitHub (`git ls-remote`,
+no clone, no auth, ~1s) and on a mismatch prints the two versions plus the update command for
+**this** install. Install kind is read from paths, not guessed: a `plugins`/`marketplaces`
+segment in the invoked path means the Claude Code plugin (`/plugin marketplace update` first —
+that is the step that carries the new version); an invoked path differing from the resolved one
+means `~/.claude/skills/<skill>` is a symlink into a clone, so `git -C <clone> pull` is the whole
+update; a clone run directly gets the same pull; anything else is a copy and gets
+`npx skills@latest add`.
+
+Why it exists: nothing told a user their copy was six versions behind. A stale copy is not
+inert — it runs old generators and old gates against a repo the newer version knows more about,
+and it fails quietly, which is the worst way to fail.
+
+Deliberately **not** a blocker and deliberately **not** dismissible. SKILL.md's new "Update
+check" section is explicit on all four: never stop the run for it (an update mid-run would swap
+the scripts under a half-finished feature), never run the update on the user's behalf, never ask
+a question about it (it is a notice inside the first message, so it does not consume the
+one-question-per-message turn Step 1b owns), and never go quiet — there is no dismissal state,
+so the notice repeats every run until the versions match. It is repeated once more in the final
+report, which is when acting on it is actually safe.
+
+Failure is always silent-and-continue: no network, no `git`, a firewall, a renamed repo → `UPDATE
+CHECK SKIPPED` and the run proceeds. Exit is 0 in every case except a usage error; `--strict`
+opts into exit 1 for scripting. The GitHub answer is cached for six hours under
+`~/.cache/react-clean-architecture/` — the *notice* still prints on every run, the cache only
+avoids the round trip. A local version ahead of the last tag is reported as a development
+checkout rather than an update.
+
+`SKILL_VERSION`, `plugin.json` and `marketplace.json` are now one number enforced by a test:
+before this release the manifests were what the plugin system read and `SKILL_VERSION` was
+internal, and drift between them would have made the check advertise an update the user already
+had — or hide one they needed.
+
+18 new tests (171 → 189), none of which touch the network: the CLI cases are driven through
+`--cache`, and the version/install-kind logic is exercised as pure functions.
+
 ## 1.17.0 — reference docs served by section; SKILL.md split; cropped re-verification
 
 Second half of the pass a first run costing ~92k tokens started. Everything here changes how

@@ -227,3 +227,38 @@ a full frame to confirm a 4px gap adds nothing you have not already approved. An
 judged gets the full frame, and unsure means take the full frame.
 
 Suite: 149 → 172 tests, all green.
+
+## v1.18.0 — the update check (2026-09-01)
+
+**User request:** "make the skill when user start using the skill check if there's update or
+not — if there's an update tell the user with every run until the user updates."
+
+`scripts/check-update.js`, checklist item 0, ahead of the tsc baseline. `git ls-remote --tags`
+against the public repo (no clone, no auth, ~1s), newest `v*` tag vs the installed
+`SKILL_VERSION`. Behind → the two versions plus the update command for the install actually
+running, derived from paths: a `plugins`/`marketplaces` path segment → Claude Code plugin;
+invoked path ≠ resolved path with a `.git` two levels above → symlinked clone (`git -C … pull`
+is the whole update); same paths with a `.git` → clone; otherwise a copy.
+
+Four constraints in SKILL.md's "Update check" section, all deliberate:
+- **Not a blocker.** Updating mid-run would swap the scripts under a half-finished feature.
+- **Never self-applied.** The agent does not `git pull`, `/plugin update`, or re-run
+  install.sh — it is the user's install, and the command is theirs to run between runs.
+- **Not a question.** It is a notice inside the first message, so it does not consume the
+  one-question-per-message turn Step 1b owns.
+- **No dismissal state.** This is the part the user asked for by name: "later" is not
+  remembered, the notice repeats every run until the versions match. It is repeated once in
+  the final report, which is the point where acting on it is safe.
+
+Failure mode is silent-and-continue — no network, no git, firewall, renamed repo → `UPDATE
+CHECK SKIPPED`, exit 0. `--strict` is the only path to a non-zero exit for being behind. The
+GitHub answer is cached six hours under `~/.cache/react-clean-architecture/`; the notice still
+prints every run, the cache only skips the round trip. Local ahead of the newest tag reads as a
+development checkout, not an update.
+
+**Version is now one number.** `SKILL_VERSION` was internal (stamped into persisted specs) and
+the manifests were what the plugin system read. The check compares the local `SKILL_VERSION`,
+so drift would advertise an update the user already had, or hide one they needed; a test pins
+`SKILL_VERSION` = `plugin.json` = `marketplace.json`.
+
+Suite: 172 → 189 tests, none touching the network (CLI cases run through `--cache`).
