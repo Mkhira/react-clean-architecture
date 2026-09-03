@@ -1,0 +1,26 @@
+{
+  "description": "react-clean-plugin \u2014 compaction guard. Lives at plugin level because Claude Code 2.1.259 does not dispatch PreCompact/PostCompact to skill-frontmatter hooks (verified: the same skill's Stop hook fires in later turns, these never did). Both scripts are inert unless a skill run is in progress (.claude-skill-manifest.json in the repo root).",
+  "hooks": {
+    "PreCompact": [
+      {
+        "matcher": "manual",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/skills/react-clean-architecture/scripts/hooks/pre-compact.js\""
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/skills/react-clean-architecture/scripts/hooks/post-compact.js\""
+          }
+        ]
+      }
+    ]
+  }
+}
