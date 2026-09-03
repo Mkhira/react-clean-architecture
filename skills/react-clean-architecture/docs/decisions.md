@@ -228,6 +228,22 @@ judged gets the full frame, and unsure means take the full frame.
 
 Suite: 149 → 172 tests, all green.
 
+## v1.18.1 — translation rewrites keep the file's own `\uXXXX` escapes (2026-09-03)
+
+**User request:** "why you removed \u20C1 from src/core/localization/translations/ in en and
+ar? in currency it should be \u20C1" → "yes patch the script to keep \u20C1 escaped".
+
+`register-navigation.js` adds `services.<camel>` to both core JSON files by parsing and
+re-stringifying them. `JSON.stringify` writes non-ASCII literally, so the riyal sign the app
+keeps as `"\u20C1"` came out as the literal glyph — the same string at runtime, but U+20C1 is a
+combining character, unreadable in an editor and a diff the reviewer had to ask about.
+
+Fix is `preserveUnicodeEscapes(original, output)`: the set of `\uXXXX` escapes is read off the
+file being rewritten and only those codepoints are re-escaped in the output. Not a hardcoded
+riyal, not "escape every symbol": the file's own convention is the spec, so Arabic copy stays
+literal and a repo that writes everything literally is left untouched. One test seeds the
+escape in both fixtures and asserts it survives while the Arabic string beside it stays literal.
+
 ## v1.18.0 — the update check (2026-09-01)
 
 **User request:** "make the skill when user start using the skill check if there's update or

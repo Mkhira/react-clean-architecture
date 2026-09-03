@@ -190,6 +190,27 @@ test('pre-existing translation values are never overwritten', () => {
     assert.match(JSON.parse(read(repo, 'src/core/localization/translations/en.json')).services.orderTracking.title, /TODO\(claude\)/);
 });
 
+test('\\uXXXX escapes the translation files already use survive the rewrite', () => {
+    const repo = repoWithStarter();
+    for (const lang of ['en', 'ar']) {
+        const file = `src/core/localization/translations/${lang}.json`;
+        // the app's riyal sign is kept escaped on purpose: U+20C1 is a combining
+        // character that renders as a broken box when written literally
+        write(repo, file, read(repo, file).replace('"services"', '"currency": "\\u20C1",\n    "services"'));
+    }
+    const { result } = runNav(repo, navSpec());
+    assert.equal(result.status, 0, result.stderr);
+    for (const lang of ['en', 'ar']) {
+        const text = read(repo, `src/core/localization/translations/${lang}.json`);
+        assert.ok(text.includes('"currency": "\\u20C1"'), `${lang}.json: the riyal escape was rewritten as a literal`);
+        assert.ok(!text.includes('\u20C1'), `${lang}.json: literal U+20C1 leaked into the file`);
+        const data = JSON.parse(text);
+        assert.equal(data.currency, '\u20C1', 'the value itself is unchanged');
+        assert.match(data.services.orderTracking.title, /TODO\(claude\)/);
+        if (lang === 'ar') assert.equal(data.common.ok, 'حسنا', 'Arabic copy stays literal');
+    }
+});
+
 test('spec without a design block is rejected before touching anything', () => {
     const repo = repoWithStarter();
     const { result } = runNav(repo, baseSpec());

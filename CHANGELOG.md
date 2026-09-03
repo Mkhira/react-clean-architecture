@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.18.1 — register-navigation.js keeps the translation files' `\uXXXX` escapes
+
+`updateTranslations` re-serializes `en.json`/`ar.json` through `JSON.stringify`, which writes
+every non-ASCII character literally. Right for Arabic copy; wrong for the app's
+`"currency": "\u20C1"` — the riyal sign is a combining character, so the literal form renders
+as a broken box in editors and showed up as a spurious diff on the next run. The script now
+collects the `\uXXXX` escapes the file already uses and re-applies exactly those to its output,
+so what was escaped stays escaped and everything else stays literal. No behaviour change at
+runtime: the parsed strings are identical either way.
+
 ## 1.18.0 — the skill tells you when it is out of date
 
 `scripts/check-update.js` runs as checklist item 0, before the tsc baseline, on every run. It

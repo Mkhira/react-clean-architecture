@@ -62,6 +62,30 @@ function write(file, content) {
     touchedFiles.add(file);
 }
 
+/**
+ * Re-applies every `\uXXXX` escape the original JSON text used to the
+ * re-serialized output. `JSON.stringify` emits non-ASCII literally, which is
+ * right for Arabic copy but turned the app's `"currency": "\u20C1"` (the
+ * riyal sign, a combining character that renders as a broken box in editors)
+ * into a literal glyph — the same string at runtime, a spurious diff and an
+ * unreadable line in review. The set of escapes is taken from the file
+ * itself, so a repo that writes everything literally is left alone.
+ */
+function preserveUnicodeEscapes(original, output) {
+    const escaped = new Set();
+    for (const match of original.matchAll(/\\u([0-9a-fA-F]{4})/g)) {
+        // an escaped backslash followed by "uXXXX" is not an escape
+        const backslashes = /\\+$/.exec(original.slice(0, match.index));
+        if (backslashes && backslashes[0].length % 2 === 1) continue;
+        escaped.add(match[1].toUpperCase());
+    }
+    if (escaped.size === 0) return output;
+    return output.replace(/[^\x00-\x7F]/g, (char) => {
+        const hex = char.charCodeAt(0).toString(16).toUpperCase().padStart(4, '0');
+        return escaped.has(hex) ? `\\u${hex}` : char;
+    });
+}
+
 function createFile(repo, relative, content) {
     const file = path.join(repo, relative);
     if (fs.existsSync(file)) {
@@ -432,7 +456,8 @@ function updateTranslations(repo, n) {
         };
         const original = read(file);
         const indent = (original.match(/^( +)"/m) || [null, '    '])[1];
-        write(file, JSON.stringify(data, null, indent) + (original.endsWith('\n') ? '\n' : ''));
+        const serialized = JSON.stringify(data, null, indent) + (original.endsWith('\n') ? '\n' : '');
+        write(file, preserveUnicodeEscapes(original, serialized));
         report.inserted.push(`${label}: services.${n.featureCamel} (placeholders)`);
     }
     report.needsClaude.push(`translations: fill services.${n.featureCamel}.title/description in en.json + ar.json (Arabic from Figma/story; flag for Corporate Communication)`);
