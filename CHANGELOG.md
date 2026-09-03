@@ -43,6 +43,11 @@ skills, manual copy) are unaffected: still `/react-clean-architecture`.
 DESIGN.md's launch step now invokes `/run` when the target repo has a `run-<app>` skill
 (`.claude/skills/run-*`), keeping the inline recipe as the fallback; the README's
 Requirements name the sandbox / auto-mode hosts the intake and the design lane reach.
+Two optional delegations for Claude Code, both to a `general-purpose` subagent and never
+`Explore`: writing COMPONENTS.md drift entries (DESIGN.md "Keeping COMPONENTS.md current" —
+the main conversation re-runs the drift check and stays with the user) and audit fix-cycles
+2 and 3 (SKILL.md Step 5.6 — cycle 1 stays inline so the first failure is seen). The skill is
+never forked as a whole.
 
 ## 1.18.2 — README/install.sh doc drift + README version guard
 

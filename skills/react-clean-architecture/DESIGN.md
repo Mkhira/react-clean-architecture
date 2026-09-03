@@ -229,6 +229,16 @@ detector, never a generator; the prose is yours.
 - Re-run until it prints `0 drift, 0 stale`, and say in the final report which entries you
   added.
 
+**Delegating the entry-writing (Claude Code, optional).** Writing several entries means
+reading several component sources, and that reading crowds out the screen work. When the
+drift list has more than one or two names, hand it to a `general-purpose` subagent (never
+`Explore` — it skips CLAUDE.md and cannot write). The prompt is exactly three things: the
+DRIFT lines as printed, the house format from this section (heading form, the five
+sub-sections, the quick-lookup row, "gotchas are the point"), and the dictionary's path,
+`${CLAUDE_SKILL_DIR}/COMPONENTS.md`. When it returns, run `check-components-md.js` yourself and
+continue only on `0 drift`; the entries are still yours to answer for in the final report.
+The main conversation stays with the user throughout — this delegates reading, not the run.
+
 **The house format is machine-read now.** `scripts/components.js` slices the file on
 `### <Name> — <kind>` headings and serves one entry at a time, and `check-components-md.js`
 matches names out of those same headings (aliases in parentheses and `/`-separated names both

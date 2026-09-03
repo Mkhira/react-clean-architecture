@@ -393,6 +393,11 @@ components or controllers, and keep it in view while you do. `audit.js`'s
 6. Audit PASS → **compaction pause** (checkpoint 3 in "Context-compaction checkpoints")
    before the design lane (full) / final report (backend-only).
    Failures → fix and re-audit, **max 3 fix-cycles**, then stop and report what still fails.
+   Cycle 1 is always yours — you need to see the first failure. In Claude Code, cycles 2 and
+   3 MAY go to a `general-purpose` subagent (never `Explore`): give it the audit output, the
+   feature dir, and the AUDIT.md fix for each failing check; re-run the audit yourself when it
+   returns and count its pass as that cycle. Never fork the whole skill (`context: fork`) —
+   the intake and the checkpoints are conversations with the user.
    Rollback on abort: `node <skill>/scripts/rollback.js` (dry run — shows the plan), then
    `--apply` after the user confirms. It deletes the manifest's `created` files and
    `git checkout --`s the `patched` ones (generate + register-di edits both) — nothing outside
