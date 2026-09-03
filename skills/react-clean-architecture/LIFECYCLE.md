@@ -26,7 +26,10 @@ those stay manual.
   refusals of the same kind: a persisted spec whose `queryParams` / `pathParams` entries are
   not `{ "name", "type" }` objects (fix the spec), and **signature drift** — a method whose
   parameter list on disk differs from what the spec generates (its callers were hand-changed;
-  re-align `queryParams` / `pathParams` / `requestSample` to the code).
+  re-align `queryParams` / `pathParams` / `requestSample` to the code). And **hand edits in a
+  machine-owned file** — the service imports a module the template never generates, so
+  behaviour lives there that regeneration would drop; move it into the use case or mapper,
+  or migrate that feature by hand.
 
 ## Migrate at scale (Claude Code dynamic workflow)
 

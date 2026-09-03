@@ -387,6 +387,18 @@ test('migrate: refuses to write when a method signature drifted from what the sp
     assert.equal(fs.readFileSync(service, 'utf8'), before, 'nothing may be written under signature drift');
 });
 
+test('migrate: refuses when the service imports something the template never generates (hand logic)', () => {
+    // live 2026-09-03: getStoredLanguage + a country constant fed query params the callers no longer pass
+    const { repo } = fullFixture();
+    const service = path.join(repo, 'src/features/order-tracking/data/services/OrderTrackingService.ts');
+    const before = "import { getStoredLanguage } from '@core/localization/storage';\n" + fs.readFileSync(service, 'utf8');
+    fs.writeFileSync(service, before);
+    const result = runScript('migrate-feature.js', ['OrderTracking', '--repo', repo, '--apply']);
+    assert.equal(result.status, 2, result.stdout + result.stderr);
+    assert.match(result.stdout, /hand edits in .*OrderTrackingService\.ts: it imports storage/);
+    assert.equal(fs.readFileSync(service, 'utf8'), before, 'nothing may be written');
+});
+
 test('migrate: a prettier-wrapped signature is not drift', () => {
     const { repo } = fullFixture();
     const service = path.join(repo, 'src/features/order-tracking/data/services/OrderTrackingService.ts');

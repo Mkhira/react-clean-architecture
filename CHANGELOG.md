@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.19.3 — migrate-feature.js: hand logic inside a machine-owned file is a refusal too
+
+With both zatcaReact specs corrected, establishment-signup passed every 1.19.2 check and
+would have regenerated its service — tsc-clean — while dropping the two lines the team had
+added to it by hand (the stored language and a country constant fed into the query params
+the callers no longer pass). Runtime break, no compiler error. New **import-drift check**:
+any module the service on disk imports that the current template would not generate
+(compared by module name, so an old-layout path this migration relocates is not drift) means
+behaviour was added to a machine-owned file; the migration refuses (exit 2, names the
+imports) and nothing is written. Five refusals now stand between a regeneration and a broken
+feature; on the live repo every generated feature is refused for a stated reason, which is
+the correct outcome — their code moved past the templates. 1 new test (223 → 224).
+
 ## 1.19.2 — migrate-feature.js: two more refusals from the same live migration
 
 Running 1.19.1's guards on establishment-signup (1.14.2) still produced 9 new tsc errors:

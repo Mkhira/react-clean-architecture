@@ -110,6 +110,16 @@ function methodSignatures(content) {
     return sigs;
 }
 
+/**
+ * Module names of every static import in a TS file (`from '…'`), reduced to
+ * the last path segment so an old-layout path (`../services/IFooService`,
+ * relocated by this very migration) equals its current one
+ * (`../IServices/IFooService`) — only genuinely foreign modules stand out.
+ */
+function importSpecifiers(content) {
+    return [...content.matchAll(/^\s*import\b[^;]*?\bfrom\s+['"]([^'"]+)['"]/gm)].map((m) => m[1].split('/').pop());
+}
+
 function isMachineOwned(relative, f, includeTypes) {
     const inFeature = (sub) => relative.includes(`${path.sep}${f.featureDir}${path.sep}${sub}`);
     // The mock service's sample catalog is hand-enriched after generation
@@ -330,6 +340,23 @@ function main() {
                 `${onlyInSpec.length ? `spec has ${onlyInSpec.join(', ')} not in the service` : ''}. ` +
                 'Nothing was written. Bring the spec back in line first (an append run for the new endpoints, or edit feature-spec.json to match the code), then migrate.'
             );
+        }
+        // Hand logic inside a machine-owned file: an import the template never
+        // emits means the team added behaviour there (live 2026-09-03:
+        // establishment-signup's service reads the stored language and a country
+        // constant to fill query params the callers no longer pass — tsc-clean,
+        // so only this check stands between the migration and a runtime break).
+        const plannedForImports = planned.get(path.relative(repo, servicePath));
+        if (plannedForImports) {
+            const plannedImports = new Set(importSpecifiers(plannedForImports));
+            const handImports = importSpecifiers(fs.readFileSync(servicePath, 'utf8')).filter((s) => !plannedImports.has(s));
+            if (handImports.length) {
+                report.problems.push(
+                    `hand edits in ${path.relative(repo, servicePath)}: it imports ${handImports.join(', ')}, which the template never generates — ` +
+                    'behaviour was added to a machine-owned file and regenerating it would drop that behaviour. Nothing was written. ' +
+                    'Move the logic into the use case / mapper (hand-owned) or migrate this feature by hand.'
+                );
+            }
         }
         // Same method names, different parameters: the team changed a signature
         // by hand (and therefore its callers — use cases, mock, tests, which
