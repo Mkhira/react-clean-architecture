@@ -22,7 +22,11 @@ those stay manual.
   endpoints — nothing machine-owned exists) and **spec drift** (the service's `async`
   methods no longer match the spec's endpoint actions: the team changed the feature after
   generation, so regenerating from the stale spec would overwrite their work — re-align the
-  spec first, via an append run or by editing `feature-spec.json`, then migrate).
+  spec first, via an append run or by editing `feature-spec.json`, then migrate). Two more
+  refusals of the same kind: a persisted spec whose `queryParams` / `pathParams` entries are
+  not `{ "name", "type" }` objects (fix the spec), and **signature drift** — a method whose
+  parameter list on disk differs from what the spec generates (its callers were hand-changed;
+  re-align `queryParams` / `pathParams` / `requestSample` to the code).
 
 ## Migrate at scale (Claude Code dynamic workflow)
 

@@ -360,6 +360,47 @@ test('migrate: refuses to write when the service has drifted from the persisted 
     assert.equal(fs.readFileSync(service, 'utf8'), before, 'nothing may be written under drift');
 });
 
+test('migrate: refuses a persisted spec whose params are not {name, type} objects', () => {
+    // live 2026-09-03: queryParams: ['country', 'language'] rendered `query: { undefined: string }`
+    const { repo } = fullFixture();
+    const specFile = path.join(repo, 'src/features/order-tracking/feature-spec.json');
+    const persisted = JSON.parse(fs.readFileSync(specFile, 'utf8'));
+    persisted.endpoints[0].queryParams = ['country', 'language'];
+    fs.writeFileSync(specFile, JSON.stringify(persisted));
+    const result = runScript('migrate-feature.js', ['OrderTracking', '--repo', repo, '--apply']);
+    assert.equal(result.status, 1, result.stdout + result.stderr);
+    assert.match(result.stderr, /trackOrder\.queryParams entry "country" must be a \{ "name", "type" \} object/);
+});
+
+test('migrate: refuses to write when a method signature drifted from what the spec generates', () => {
+    // live 2026-09-03: getIssuingCities() in code, two query params still in the spec → callers would break
+    const { repo } = fullFixture();
+    const specFile = path.join(repo, 'src/features/order-tracking/feature-spec.json');
+    const persisted = JSON.parse(fs.readFileSync(specFile, 'utf8'));
+    persisted.endpoints[0].queryParams = [{ name: 'notify', type: 'string' }];
+    fs.writeFileSync(specFile, JSON.stringify(persisted));
+    const service = path.join(repo, 'src/features/order-tracking/data/services/OrderTrackingService.ts');
+    const before = fs.readFileSync(service, 'utf8');
+    const result = runScript('migrate-feature.js', ['OrderTracking', '--repo', repo, '--apply']);
+    assert.equal(result.status, 2, result.stdout + result.stderr);
+    assert.match(result.stdout, /signature drift: trackOrder\(input:TrackOrderInput\) in .* but the spec now generates trackOrder\(input:TrackOrderInput,query:\{notify:string\}\)/);
+    assert.equal(fs.readFileSync(service, 'utf8'), before, 'nothing may be written under signature drift');
+});
+
+test('migrate: a prettier-wrapped signature is not drift', () => {
+    const { repo } = fullFixture();
+    const service = path.join(repo, 'src/features/order-tracking/data/services/OrderTrackingService.ts');
+    const wrapped = fs.readFileSync(service, 'utf8').replace(
+        /async trackOrder\(input: TrackOrderInput\)/,
+        'async trackOrder(\n        input: TrackOrderInput,\n    )'
+    );
+    assert.notEqual(wrapped, fs.readFileSync(service, 'utf8'), 'fixture signature must have been rewrapped');
+    fs.writeFileSync(service, wrapped);
+    const result = runScript('migrate-feature.js', ['OrderTracking', '--repo', repo]);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    assert.doesNotMatch(result.stdout, /drift/);
+});
+
 test('migrate: refuses a design-only record instead of crashing on its empty endpoint list', () => {
     /*
      * Design-only runs persist { feature, skillVersion, design } — no endpoints, no

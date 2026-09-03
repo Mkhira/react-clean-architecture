@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.19.2 — migrate-feature.js: two more refusals from the same live migration
+
+Running 1.19.1's guards on establishment-signup (1.14.2) still produced 9 new tsc errors:
+its persisted spec carried `queryParams: ['country', 'language']` (bare strings — SPEC_FORMAT.md
+says `{name, type}[]`), which rendered as `query: { undefined: string }`, and the team had
+since dropped those params from the service by hand, so even a corrected spec would have
+regenerated `getIssuingCities(query)` against callers that pass nothing. Two refusals, both
+without writing: a **spec-shape check** (every `queryParams` / `pathParams` entry must be a
+`{ "name", "type" }` object — exit 1, names the entry) and a **signature-drift check** (for
+every method the spec still knows, the parameter list on disk must equal what the current
+template generates, whitespace and prettier wrapping ignored — exit 2, shows both
+signatures). Together with 1.19.1's checks, `migrate-feature.js` now refuses every way a
+regeneration could break hand-written callers that it observed on real features. 3 new
+tests (220 → 223).
+
 ## 1.19.1 — migrate-feature.js: three ways it could destroy hand work, closed
 
 Found while preparing the first bulk migration (1.14.2 → 1.19.0 templates) across the four

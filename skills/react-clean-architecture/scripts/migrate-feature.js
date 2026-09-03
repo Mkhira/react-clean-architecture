@@ -78,6 +78,38 @@ function appErrorCodes(repo) {
 }
 
 /** Which planned files the migration owns. Paths are repo-relative. */
+/**
+ * `name → normalized parameter list` for every 4-space-indented `async` method
+ * (the service template's shape; `private async` helpers are excluded). Parens
+ * are scanned balanced so `Record<string, () => void>` does not cut a list short;
+ * whitespace and prettier's trailing commas are normalized away so a wrapped
+ * signature equals its single-line template.
+ */
+function methodSignatures(content) {
+    const sigs = new Map();
+    const pattern = /^ {4}async\s+([A-Za-z0-9_]+)\s*\(/gm;
+    let match;
+    while ((match = pattern.exec(content)) !== null) {
+        let depth = 1;
+        let i = match.index + match[0].length;
+        const start = i;
+        while (i < content.length && depth > 0) {
+            if (content[i] === '(') depth++;
+            else if (content[i] === ')') depth--;
+            i++;
+        }
+        const params = content.slice(start, i - 1)
+            .replace(/\s+/g, ' ')
+            .replace(/\s*([,:(){}<>;|])\s*/g, '$1')
+            .replace(/,([})])/g, '$1')
+            .replace(/;}/g, '}')
+            .replace(/,$/, '')
+            .trim();
+        sigs.set(match[1], params);
+    }
+    return sigs;
+}
+
 function isMachineOwned(relative, f, includeTypes) {
     const inFeature = (sub) => relative.includes(`${path.sep}${f.featureDir}${path.sep}${sub}`);
     // The mock service's sample catalog is hand-enriched after generation
@@ -236,6 +268,29 @@ function main() {
         return 1;
     }
 
+    // Persisted specs written by hand or by an old intake can carry shapes the
+    // current templates cannot render (live 2026-09-03: establishment-signup had
+    // queryParams: ['country', 'language'] — SPEC_FORMAT.md says {name, type}[] —
+    // and the regenerated service read `query: { undefined: string }`). Refuse
+    // before planning; the fix is a one-line edit of feature-spec.json.
+    const shapeProblems = [];
+    for (const endpoint of spec.endpoints) {
+        for (const key of ['queryParams', 'pathParams']) {
+            for (const param of endpoint[key] ?? []) {
+                if (!param || typeof param !== 'object' || typeof param.name !== 'string') {
+                    shapeProblems.push(`${endpoint.action}.${key} entry ${JSON.stringify(param)} must be a { "name", "type" } object`);
+                }
+            }
+        }
+    }
+    if (shapeProblems.length) {
+        console.error(
+            `migrate-feature.js: ${path.relative(repo, specPath)} does not match SPEC_FORMAT.md — ` +
+            shapeProblems.join('; ') + '. Fix the spec, then migrate.'
+        );
+        return 1;
+    }
+
     const fromVersion = spec.skillVersion ?? '1.0.0 (pre-stamping)';
     const f = featureModel(spec);
     f.featureDir = featureDirName;
@@ -275,6 +330,24 @@ function main() {
                 `${onlyInSpec.length ? `spec has ${onlyInSpec.join(', ')} not in the service` : ''}. ` +
                 'Nothing was written. Bring the spec back in line first (an append run for the new endpoints, or edit feature-spec.json to match the code), then migrate.'
             );
+        }
+        // Same method names, different parameters: the team changed a signature
+        // by hand (and therefore its callers — use cases, mock, tests, which
+        // migration never touches). Regenerating the service alone would break
+        // every caller (live 2026-09-03: getIssuingCities() in code, the spec
+        // still carried two query params → 9 new tsc errors).
+        const plannedService = planned.get(path.relative(repo, servicePath));
+        if (plannedService) {
+            const existingSigs = methodSignatures(fs.readFileSync(servicePath, 'utf8'));
+            const plannedSigs = methodSignatures(plannedService);
+            for (const [name, plannedParams] of plannedSigs) {
+                if (!existingSigs.has(name) || existingSigs.get(name) === plannedParams) continue;
+                report.problems.push(
+                    `signature drift: ${name}(${existingSigs.get(name)}) in ${path.relative(repo, servicePath)} but the spec now generates ${name}(${plannedParams}) — ` +
+                    'its callers (use case, mock, tests) were changed by hand and migration never touches them. Nothing was written. ' +
+                    'Re-align the spec (queryParams / pathParams / requestSample) to the code, then migrate.'
+                );
+            }
         }
     }
     const write = apply && !report.problems.length;
