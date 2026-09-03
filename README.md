@@ -310,6 +310,12 @@ Unit suites cover the parsers, generation scenarios (create/append/never-overwri
 - `install.sh` also auto-installs **idb** for tap-driven simulator verification (Homebrew tap
   `facebook/fb`, or the prebuilt GitHub-release companion when Homebrew is absent — Homebrew
   itself is never auto-installed; `--no-tools` skips).
+- Sandbox / auto mode (Claude Code): the intake EXECUTES your curl and the design lane calls
+  the Figma MCP server and Metro on `localhost:8081`. Allowlist those hosts in
+  `sandbox.network.allowedDomains`, and in auto mode describe them in `autoMode.environment`
+  (keep `"$defaults"` first) so the classifier does not stall on the curl.
+- Optional: a `run-<app>` project skill (`/run-skill-generator`, or hand-written) in the
+  target repo — the design lane's launch step invokes `/run` when one exists.
 
 ## Secret handling
 

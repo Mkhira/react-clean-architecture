@@ -359,7 +359,9 @@ note "screenshot-only verification" in the checkpoint + final report.
 
 Per screen, after generation compiles (`npx tsc --noEmit` clean vs baseline):
 
-1. Build/launch: booted simulator + `npx expo run:ios` (or relaunch the installed dev build:
+1. Build/launch. If the target repo has a run skill (`ls .claude/skills/run-*`), invoke
+   `/run` and let it drive the launch — it carries this recipe with the repo's own facts;
+   what follows is the fallback. Booted simulator + `npx expo run:ios` (or relaunch the installed dev build:
    `xcrun simctl launch booted com.zatca.app`). Metro: plain `npx expo start` — the repo's
    `start:dev` script passes `--env-file`, which this CLI rejects; Expo auto-loads `.env` +
    `.env.development` anyway. **Stale-bundle trap**: an app launched before Metro was ready

@@ -40,6 +40,10 @@ once. `check-update.js` prints the right name for each step and, under a plugin 
 its cache in `CLAUDE_PLUGIN_DATA` instead of `~/.cache`. Skill installs (install.sh, npx
 skills, manual copy) are unaffected: still `/react-clean-architecture`.
 
+DESIGN.md's launch step now invokes `/run` when the target repo has a `run-<app>` skill
+(`.claude/skills/run-*`), keeping the inline recipe as the fallback; the README's
+Requirements name the sandbox / auto-mode hosts the intake and the design lane reach.
+
 ## 1.18.2 — README/install.sh doc drift + README version guard
 
 1.18.1 shipped with the README badge and "current release" line still saying 1.18.0. The
