@@ -2,7 +2,7 @@
 
 > An [Agent Skill](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview) that scaffolds **complete clean-architecture features** in a React Native (Expo) app from a single curl paste — and builds their **pixel-accurate screens from Figma**, verified live on the iOS simulator.
 
-![version](https://img.shields.io/badge/version-1.20.0-blue) ![tests](https://img.shields.io/badge/tests-229%20passing-brightgreen) ![deps](https://img.shields.io/badge/dependencies-zero-lightgrey) ![node](https://img.shields.io/badge/node-%E2%89%A518-339933) ![license](https://img.shields.io/badge/license-MIT-yellow)
+![version](https://img.shields.io/badge/version-1.20.1-blue) ![tests](https://img.shields.io/badge/tests-230%20passing-brightgreen) ![deps](https://img.shields.io/badge/dependencies-zero-lightgrey) ![node](https://img.shields.io/badge/node-%E2%89%A518-339933) ![license](https://img.shields.io/badge/license-MIT-yellow)
 
 Works with **Claude Code**, **Cursor**, **OpenAI Codex CLI**, and any agent that reads `AGENTS.md` / Markdown skills. One [install script](#install), three tools.
 
@@ -194,7 +194,7 @@ cp -R skills/react-clean-architecture ~/.claude/skills/
 
 ### Update
 
-The current release is **1.20.0** ([CHANGELOG](CHANGELOG.md)). **The skill tells you itself**: every run starts with `scripts/check-update.js`, which compares your installed version against the newest release tag and, when you are behind, prints the versions and the update command for your install before the first question. It never blocks the run, never updates anything on its own, and has no "dismiss" — it says it again on every run until you update. Offline, or without `git`, the check is skipped silently.
+The current release is **1.20.1** ([CHANGELOG](CHANGELOG.md)). **The skill tells you itself**: every run starts with `scripts/check-update.js`, which compares your installed version against the newest release tag and, when you are behind, prints the versions and the update command for your install before the first question. It never blocks the run, never updates anything on its own, and has no "dismiss" — it says it again on every run until you update. Offline, or without `git`, the check is skipped silently.
 
 How you update depends on how you installed:
 
@@ -268,7 +268,11 @@ for them. Other hosts have no hook system; the SKILL.md text they back up is unc
 | `post-compact.js` | PostCompact | re-injects the spec/manifest paths and the screen progress so the resume never depends on the summary |
 | `stop-gate.js` | Stop | deterministic definition-of-done check: working files left after the implementation is finished, `TODO(claude)` in the feature, COMPONENTS.md drift. Never fires on the skill's own pauses or on a question to the user; honours `stop_hook_active` |
 
-Test them the same way as the scripts: `tests/hooks.test.js` pipes stdin JSON into each one.
+Each hook command locates the skill itself (plugin root → project skill → user skill) because
+Claude Code sets `CLAUDE_PLUGIN_ROOT` for plugin installs but no variable for a symlinked or
+copied skill, and does not expand `${CLAUDE_SKILL_DIR}` inside hook commands. Test them the
+same way as the scripts: `tests/hooks.test.js` pipes stdin JSON into each one and runs the
+resolver through `sh` for all three install shapes.
 
 ## Scripts reference
 
@@ -295,7 +299,7 @@ Paths are relative to [`skills/react-clean-architecture/`](skills/react-clean-ar
 
 ## Testing the skill itself
 
-229 tests on Node's built-in runner — still zero dependencies:
+230 tests on Node's built-in runner — still zero dependencies:
 
 ```bash
 node --test skills/react-clean-architecture/tests/*.test.js

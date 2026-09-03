@@ -292,10 +292,44 @@ test('SKILL.md wires all five hooks and every command points at an existing scri
     for (const event of ['PreToolUse', 'PostToolUse', 'PreCompact', 'PostCompact', 'Stop']) {
         assert.match(frontmatter, new RegExp(`^  ${event}:\\n`, 'm'), `${event} not wired`);
     }
-    const commands = [...frontmatter.matchAll(/command: node "\$\{CLAUDE_SKILL_DIR\}\/(scripts\/hooks\/[a-z-]+\.js)"/g)].map((m) => m[1]);
-    assert.equal(commands.length, 5);
-    for (const rel of commands) assert.ok(fs.existsSync(path.join(SKILL_DIR, rel)), `${rel} missing`);
+    const commands = [...frontmatter.matchAll(/command: '(for d in [^\n]*?exit 0)'/g)].map((m) => m[1]);
+    assert.equal(commands.length, 5, 'five self-locating hook commands');
+    for (const command of commands) {
+        const rel = command.match(/exec node "\$d\/(scripts\/hooks\/[a-z-]+\.js)"/)[1];
+        assert.ok(fs.existsSync(path.join(SKILL_DIR, rel)), `${rel} missing`);
+        // Claude Code does NOT expand ${CLAUDE_SKILL_DIR} inside hook commands (2.1.259) —
+        // a plugin install gets CLAUDE_PLUGIN_ROOT, a symlink/copy install gets nothing
+        assert.doesNotMatch(command, /CLAUDE_SKILL_DIR/);
+        assert.match(command, /CLAUDE_PLUGIN_ROOT:\+\$CLAUDE_PLUGIN_ROOT\/skills\/react-clean-architecture/);
+        assert.match(command, /\$CLAUDE_PROJECT_DIR\/\.claude\/skills\/react-clean-architecture/);
+        assert.match(command, /\$HOME\/\.claude\/skills\/react-clean-architecture/);
+    }
     assert.match(frontmatter, /PreCompact:\n    - matcher: "manual"/, 'only manual compactions may be refused');
+});
+
+test('the frontmatter hook command finds the skill for a plugin install, a user symlink, and neither', () => {
+    const { execSync } = require('child_process');
+    const skill = fs.readFileSync(path.join(SKILL_DIR, 'SKILL.md'), 'utf8');
+    const command = skill.match(/command: '(for d in [^\n]*?pre-compact\.js[^\n]*?exit 0)'/)[1];
+    const repo = makeTmpDir('resolve');
+    manifest(repo, { spec: '/nowhere/spec.json' }); // run in progress, spec missing → the hook blocks
+    const stdin = JSON.stringify({ cwd: repo, trigger: 'manual' });
+    const run = (env) => execSync(`sh -c '${command.replace(/'/g, "'\\''")}'`, { input: stdin, env, encoding: 'utf8', cwd: repo });
+
+    // 1. plugin install: CLAUDE_PLUGIN_ROOT/skills/react-clean-architecture
+    const pluginRoot = makeTmpDir('plugin');
+    fs.mkdirSync(path.join(pluginRoot, 'skills'), { recursive: true });
+    fs.symlinkSync(SKILL_DIR, path.join(pluginRoot, 'skills', 'react-clean-architecture'));
+    assert.match(run({ PATH: process.env.PATH, HOME: makeTmpDir('home'), CLAUDE_PROJECT_DIR: repo, CLAUDE_PLUGIN_ROOT: pluginRoot }), /"decision":"block"/);
+
+    // 2. user-scoped symlink: $HOME/.claude/skills/react-clean-architecture, no plugin variable
+    const home = makeTmpDir('home');
+    fs.mkdirSync(path.join(home, '.claude', 'skills'), { recursive: true });
+    fs.symlinkSync(SKILL_DIR, path.join(home, '.claude', 'skills', 'react-clean-architecture'));
+    assert.match(run({ PATH: process.env.PATH, HOME: home, CLAUDE_PROJECT_DIR: repo }), /"decision":"block"/);
+
+    // 3. nothing installed where the command looks → silent exit 0, never a broken session
+    assert.equal(run({ PATH: process.env.PATH, HOME: makeTmpDir('home'), CLAUDE_PROJECT_DIR: repo }), '');
 });
 
 test('generate.js records the spec path in the manifest and audit.js repoints it on persist', () => {

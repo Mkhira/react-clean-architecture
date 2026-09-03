@@ -154,7 +154,9 @@ function updateSteps(kind, real) {
 
 /** Plugin installs get Claude Code's per-plugin data dir; everything else ~/.cache. */
 function defaultCachePath(env = process.env) {
-    if (env.CLAUDE_PLUGIN_DATA) return path.join(env.CLAUDE_PLUGIN_DATA, 'update-check.json');
+    // Only trust the plugin data dir when it is OURS — inside a hook, Claude Code
+    // 2.1.259 was observed handing skill hooks another plugin's CLAUDE_PLUGIN_DATA.
+    if (env.CLAUDE_PLUGIN_DATA && env.CLAUDE_PLUGIN_DATA.includes(PLUGIN_NAME)) return path.join(env.CLAUDE_PLUGIN_DATA, 'update-check.json');
     return path.join(os.homedir(), '.cache', SKILL_NAME, 'update-check.json');
 }
 

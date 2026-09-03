@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.20.1 — hooks actually run: self-locating hook commands
+
+Verified in a fresh session against the installed plugin (Claude Code 2.1.259): the
+frontmatter hooks ARE registered and fire on PreToolUse and Stop, but `${CLAUDE_SKILL_DIR}`
+is not expanded inside hook `command:` strings, so every hook failed to find its script
+(non-blocking error, silently). Hooks receive `CLAUDE_PLUGIN_ROOT` for a plugin install and
+no skill variable at all for a symlinked or copied skill. Each hook command now locates the
+skill itself — plugin root, then the project's `.claude/skills`, then the user's — and exits 0
+when none exists, so a session can never break on it. A test runs the resolver through `sh`
+for all three install shapes. Also verified: `${CLAUDE_SKILL_DIR}` and the `!` inlined update
+check DO substitute in the skill body. `check-update.js` no longer trusts a `CLAUDE_PLUGIN_DATA`
+that belongs to another plugin (observed in a hook environment). 1 new test (229 → 230).
+
 ## 1.20.0 — templates catch up with three conventions the team applied by hand
 
 The 1.19.x migration attempt showed the generated features were not behind the templates

@@ -15,30 +15,33 @@ description: >-
 argument-hint: "[feature name] [curl paste | figma link | 'design only' | 'mock']"
 effort: high
 allowed-tools: Bash(node *), Bash(npx tsc *), Bash(npx jest *), Bash(npx expo *), Bash(xcrun simctl *), Bash(idb *), Bash(git status *), Bash(git describe *), Bash(command -v *), Read, Edit, Write, Glob, Grep
+# Hook commands locate the skill themselves: Claude Code expands ${CLAUDE_PLUGIN_ROOT}
+# for plugin installs but sets NO variable for a symlinked/copied skill, and
+# ${CLAUDE_SKILL_DIR} is not expanded inside hook commands (verified 2.1.259).
 hooks:
   PreToolUse:
     - matcher: "Bash"
       hooks:
         - type: command
-          command: node "${CLAUDE_SKILL_DIR}/scripts/hooks/guard-self-update.js"
+          command: 'for d in "${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/skills/react-clean-architecture}" "$CLAUDE_PROJECT_DIR/.claude/skills/react-clean-architecture" "$HOME/.claude/skills/react-clean-architecture"; do [ -f "$d/scripts/hooks/guard-self-update.js" ] && exec node "$d/scripts/hooks/guard-self-update.js"; done; exit 0'
   PostToolUse:
     - matcher: "Edit|Write"
       hooks:
         - type: command
-          command: node "${CLAUDE_SKILL_DIR}/scripts/hooks/format-feature-file.js"
+          command: 'for d in "${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/skills/react-clean-architecture}" "$CLAUDE_PROJECT_DIR/.claude/skills/react-clean-architecture" "$HOME/.claude/skills/react-clean-architecture"; do [ -f "$d/scripts/hooks/format-feature-file.js" ] && exec node "$d/scripts/hooks/format-feature-file.js"; done; exit 0'
   PreCompact:
     - matcher: "manual"
       hooks:
         - type: command
-          command: node "${CLAUDE_SKILL_DIR}/scripts/hooks/pre-compact.js"
+          command: 'for d in "${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/skills/react-clean-architecture}" "$CLAUDE_PROJECT_DIR/.claude/skills/react-clean-architecture" "$HOME/.claude/skills/react-clean-architecture"; do [ -f "$d/scripts/hooks/pre-compact.js" ] && exec node "$d/scripts/hooks/pre-compact.js"; done; exit 0'
   PostCompact:
     - hooks:
         - type: command
-          command: node "${CLAUDE_SKILL_DIR}/scripts/hooks/post-compact.js"
+          command: 'for d in "${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/skills/react-clean-architecture}" "$CLAUDE_PROJECT_DIR/.claude/skills/react-clean-architecture" "$HOME/.claude/skills/react-clean-architecture"; do [ -f "$d/scripts/hooks/post-compact.js" ] && exec node "$d/scripts/hooks/post-compact.js"; done; exit 0'
   Stop:
     - hooks:
         - type: command
-          command: node "${CLAUDE_SKILL_DIR}/scripts/hooks/stop-gate.js"
+          command: 'for d in "${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/skills/react-clean-architecture}" "$CLAUDE_PROJECT_DIR/.claude/skills/react-clean-architecture" "$HOME/.claude/skills/react-clean-architecture"; do [ -f "$d/scripts/hooks/stop-gate.js" ] && exec node "$d/scripts/hooks/stop-gate.js"; done; exit 0'
           timeout: 20
 ---
 

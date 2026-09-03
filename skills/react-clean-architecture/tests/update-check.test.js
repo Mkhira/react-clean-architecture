@@ -238,6 +238,8 @@ test('plugin.json / marketplace.json carry the names check-update.js prints', ()
 test('the update cache lives in CLAUDE_PLUGIN_DATA for plugin installs, ~/.cache otherwise', () => {
     assert.equal(defaultCachePath({ CLAUDE_PLUGIN_DATA: '/Users/x/.claude/plugins/data/react-clean-plugin' }), '/Users/x/.claude/plugins/data/react-clean-plugin/update-check.json');
     assert.match(defaultCachePath({}), /\.cache\/react-clean-architecture\/update-check\.json$/);
+    // another plugin's data dir leaking into the env (seen in a hook context) must not capture the cache
+    assert.match(defaultCachePath({ CLAUDE_PLUGIN_DATA: '/Users/x/.claude/plugins/data/codex-openai-codex' }), /\.cache\/react-clean-architecture\/update-check\.json$/);
 });
 
 test('SKILL.md runs the check at item 0, before the baseline', () => {
