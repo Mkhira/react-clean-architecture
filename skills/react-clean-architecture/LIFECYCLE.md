@@ -29,7 +29,10 @@ those stay manual.
   re-align `queryParams` / `pathParams` / `requestSample` to the code). And **hand edits in a
   machine-owned file** — the service imports a module the template never generates, so
   behaviour lives there that regeneration would drop; move it into the use case or mapper,
-  or migrate that feature by hand.
+  or migrate that feature by hand. And a **mapper contract** mismatch — the service still
+  imports the pre-1.20.0 `<Action>Mapper` object while the template now imports the
+  `to<Entity>` / `to<Action>RequestDTO` functions; convert the mapper (REVIEW.md), then
+  migrate.
 
 ## Migrate at scale (Claude Code dynamic workflow)
 

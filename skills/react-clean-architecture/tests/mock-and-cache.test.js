@@ -57,7 +57,7 @@ test('mock: true generates <Feature>MockService next to the real service', () =>
     const mock = read(repo, `${base}/OrderTrackingMockService.ts`);
     assert.match(mock, /implements IOrderTrackingService/);
     assert.match(mock, /const TRACK_ORDER_SAMPLE: TrackOrderResponseDTO =/, 'sample typed as the DTO');
-    assert.match(mock, /TrackOrderMapper\.toDomain\(TRACK_ORDER_SAMPLE\)/, 'sample flows through the REAL mapper');
+    assert.match(mock, /toTrackOrderResult\(TRACK_ORDER_SAMPLE\)/, 'sample flows through the REAL mapper');
     assert.match(mock, /const GET_ORDERS_SAMPLE: GetOrdersResponseDTO =/);
     assert.match(mock, /async getOrders\(_query:/, 'unused params underscore-prefixed');
     assert.match(mock, /\/\/ <create-feature:methods>/, 'append anchor present');
@@ -118,7 +118,7 @@ test('mock append: a new endpoint gets a self-contained mock method at the ancho
     assert.match(mock, /async getOrders\(_query:/);
     // append inserts inside the class body, so the sample must be a LOCAL const
     assert.match(mock, /const sample: GetOrdersResponseDTO =/);
-    assert.match(mock, /GetOrdersMapper\.toDomain\(sample\)/);
+    assert.match(mock, /toGetOrdersResult\(sample\)/);
     assert.doesNotMatch(mock, /const GET_ORDERS_SAMPLE/, 'no module-scope const injected into the class body');
 });
 

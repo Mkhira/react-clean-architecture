@@ -40,6 +40,37 @@ test('structure: a deleted generated file fails the audit and is named', () => {
     assert.match(result.stdout, /FAIL structure\s+missing: .*TrackOrderMapper\.ts/);
 });
 
+test('review-conventions (1.20.0): a mapper object and a locally derived error union are flagged', () => {
+    const mapperObject = auditedFixture({
+        mutate: (repo) => {
+            const file = path.join(repo, 'src/features/order-tracking/data/mappers/TrackOrderMapper.ts');
+            fs.writeFileSync(file, fs.readFileSync(file, 'utf8') + `
+export const TrackOrderMapper = {
+    toDomain: toTrackOrderResult,
+    toDTO: toTrackOrderRequestDTO,
+};
+`);
+        },
+    });
+    assert.equal(mapperObject.result.status, 1);
+    assert.match(mapperObject.result.stdout, /FAIL review-conventions.*TrackOrderMapper\.ts exports a mapper object/);
+
+    const localUnion = auditedFixture({
+        mutate: (repo) => {
+            const file = path.join(repo, 'src/features/order-tracking/domain/errors/OrderTrackingError.ts');
+            fs.writeFileSync(file, `import type { AppError } from '@shared/types/errors';
+export const ORDER_TRACKING_ERROR_CODE_VALUES = ['NETWORK_ERROR', 'AUTH_ERROR', 'TIMEOUT', 'VALIDATION_ERROR'] as const satisfies readonly AppError['code'][];
+export type ORDER_TRACKING_ERROR_CODES = (typeof ORDER_TRACKING_ERROR_CODE_VALUES)[number];
+export type OrderTrackingError = AppError;
+export const createOrderTrackingError = (code: ORDER_TRACKING_ERROR_CODES, message: string, originalError?: unknown): OrderTrackingError => ({ code, message, originalError });
+export const isOrderTrackingError = (error: unknown): error is OrderTrackingError => typeof error === 'object' && error !== null && 'message' in error && ORDER_TRACKING_ERROR_CODE_VALUES.includes((error as { code?: unknown }).code as ORDER_TRACKING_ERROR_CODES);
+`);
+        },
+    });
+    assert.equal(localUnion.result.status, 1);
+    assert.match(localUnion.result.stdout, /FAIL review-conventions.*alias INFRA_ERROR_CODES/);
+});
+
 test('di-wiring: a missing container registration fails the audit', () => {
     const { result } = auditedFixture({
         mutate: (repo) => {

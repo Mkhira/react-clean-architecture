@@ -377,9 +377,10 @@ components or controllers, and keep it in view while you do. `audit.js`'s
 3. Hand-write ONLY: the use-case `execute()` rules from the story, the mapper's
    `TODO(claude): status derivation` block (if statusEnum), the rule tests marked
    `TODO(claude)` in `test/`, and Arabic translation values. Match the generated code
-   style; keep the sample-derived test inputs valid under your new rules. New error codes go
-   into the `<FEATURE>_ERROR_CODE_VALUES` array in the errors file — the union type and the
-   runtime guard both derive from it. **`mock: true` additionally**: enrich the generated
+   style; keep the sample-derived test inputs valid under your new rules. Error codes are
+   `AppError`'s own (`INFRA_ERROR_CODES`, aliased in the errors file) — a new code is a core
+   edit to `src/shared/types/errors.ts`, so ask first, then add it to the feature's
+   `<FEATURE>_ERROR_CODE_VALUES` array too. **`mock: true` additionally**: enrich the generated
    `<Feature>MockService`'s sample catalog — enough items to exercise every filter option,
    status value, search, and multiple pages (the ApplicationStatus reference: 20 items =
    5 statuses × 4 tax types, realistic Arabic titles, honoring the endpoint's

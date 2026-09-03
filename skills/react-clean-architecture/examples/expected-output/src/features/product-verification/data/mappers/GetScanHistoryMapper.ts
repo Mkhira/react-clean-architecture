@@ -17,8 +17,6 @@ const toGetScanHistoryItem = (dto: GetScanHistoryResponseItemDTO): GetScanHistor
     wasValid: dto.WasValid,
 });
 
-export const GetScanHistoryMapper = {
-    toDomain(dto: GetScanHistoryResponseDTO): GetScanHistoryResult {
-        return dto.map(toGetScanHistoryItem);
-    },
+export const toGetScanHistoryResult = (dto: GetScanHistoryResponseDTO): GetScanHistoryResult => {
+    return dto.map(toGetScanHistoryItem);
 };

@@ -1,4 +1,4 @@
-import { GetScanHistoryMapper } from '../data/mappers/GetScanHistoryMapper';
+import { toGetScanHistoryResult } from '../data/mappers/GetScanHistoryMapper';
 import { formatNumericGregorianDate } from '@shared/utils/dateFormat';
 
 jest.mock('@shared/components', () => ({}));
@@ -13,8 +13,8 @@ const SAMPLE = [
 ] as const;
 
 describe('GetScanHistoryMapper', () => {
-    it('toDomain maps the sample response to the domain entity', () => {
-        const mapped = GetScanHistoryMapper.toDomain(SAMPLE as never);
+    it('toGetScanHistoryResult maps the sample response to the domain entity', () => {
+        const mapped = toGetScanHistoryResult(SAMPLE as never);
 
         expect(mapped[0].scanId).toBe(7);
         expect(mapped[0].scanCode).toBe("1234567890123456");

@@ -34,7 +34,7 @@ test('CORE: POST with path AND query params — service/repo/interface signature
     // external endpoint: url expression must receive the declared path param;
     // v1.8.0: the service takes the DOMAIN input and builds the payload itself
     assert.match(service, /async trackOrder\(orderId: string, input: TrackOrderInput, query: \{ notify: string \}\)/);
-    assert.match(service, /const payload = TrackOrderMapper\.toDTO\(input\);/);
+    assert.match(service, /const payload = toTrackOrderRequestDTO\(input\);/);
     assert.match(service, /ORDER_TRACKING_ENDPOINTS\.TRACK_ORDER\(orderId\)/);
 
     const repository = read(repo, 'src/features/order-tracking/data/repositories/OrderTrackingRepository.ts');
@@ -54,7 +54,7 @@ test('CORE: app-host POST with query params passes axios params config', () => {
     const repo = makeFixtureRepo();
     runScript('generate.js', [writeSpec(makeTmpDir('s'), spec), '--repo', repo]);
     const service = read(repo, 'src/features/order-tracking/data/services/OrderTrackingService.ts');
-    assert.match(service, /this\.httpClient\.post<TrackOrderResult>\(ORDER_TRACKING_ENDPOINTS\.TRACK_ORDER, payload, \{ mapper: TrackOrderMapper\.toDomain, params: query \}\)/);
+    assert.match(service, /this\.httpClient\.post<TrackOrderResult>\(ORDER_TRACKING_ENDPOINTS\.TRACK_ORDER, payload, \{ mapper: toTrackOrderResult, params: query \}\)/);
 });
 
 test('CORE: NON-nullable nested objects map directly — no contradictory ": null" fallback', () => {
@@ -231,7 +231,8 @@ export const isOrderTrackingError = (error: unknown): error is OrderTrackingErro
     const applied = runScript('migrate-feature.js', ['OrderTracking', '--repo', repo, '--apply']);
 
     const errors = read(repo, 'src/features/order-tracking/domain/errors/OrderTrackingError.ts');
-    assert.match(errors, /ORDER_TRACKING_ERROR_CODE_VALUES = \[/, 'new single-source format');
+    assert.match(errors, /ORDER_TRACKING_ERROR_CODE_VALUES: readonly ORDER_TRACKING_ERROR_CODES\[\] = \[/, 'repo-convention values array');
+    assert.match(errors, /export type ORDER_TRACKING_ERROR_CODES = INFRA_ERROR_CODES;/, 'aliases the shared union');
     assert.match(errors, /\.includes\(/, 'new membership guard');
     // v1.14.0: a feature error IS an AppError, so a hand-added code outside
     // AppError's union cannot be carried over — it is dropped and reported
@@ -396,6 +397,21 @@ test('migrate: refuses when the service imports something the template never gen
     const result = runScript('migrate-feature.js', ['OrderTracking', '--repo', repo, '--apply']);
     assert.equal(result.status, 2, result.stdout + result.stderr);
     assert.match(result.stdout, /hand edits in .*OrderTrackingService\.ts: it imports storage/);
+    assert.equal(fs.readFileSync(service, 'utf8'), before, 'nothing may be written');
+});
+
+test('migrate: refuses when the service still imports the pre-1.20.0 mapper object', () => {
+    const { repo } = fullFixture();
+    const service = path.join(repo, 'src/features/order-tracking/data/services/OrderTrackingService.ts');
+    const before = fs.readFileSync(service, 'utf8').replace(
+        "import { toTrackOrderResult, toTrackOrderRequestDTO } from '../mappers/TrackOrderMapper';",
+        "import { TrackOrderMapper } from '../mappers/TrackOrderMapper';"
+    );
+    assert.notEqual(before, fs.readFileSync(service, 'utf8'), 'fixture import must have been rewritten');
+    fs.writeFileSync(service, before);
+    const result = runScript('migrate-feature.js', ['OrderTracking', '--repo', repo, '--apply']);
+    assert.equal(result.status, 2, result.stdout + result.stderr);
+    assert.match(result.stdout, /mapper contract: .*imports TrackOrderMapper from mappers\/TrackOrderMapper but the current template imports toTrackOrderResult, toTrackOrderRequestDTO/);
     assert.equal(fs.readFileSync(service, 'utf8'), before, 'nothing may be written');
 });
 

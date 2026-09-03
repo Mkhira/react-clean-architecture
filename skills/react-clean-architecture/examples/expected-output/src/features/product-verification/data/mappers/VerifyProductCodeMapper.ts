@@ -22,31 +22,27 @@ const toVerifyProductCodePack = (dto: VerifyProductCodeResponsePackDTO): VerifyP
     customersClearanceDate: formatNumericGregorianDate(dto.CustomersClearanceDate ?? undefined),
 });
 
-export const VerifyProductCodeMapper = {
-    toDomain(dto: VerifyProductCodeResponseDTO): VerifyProductCodeResult {
-        return {
-            // TODO(claude): status derivation — map the response flags onto VerifyProductCodeStatus.
-            // Validate against VERIFY_PRODUCT_CODE_STATUS_VALUES imported from
-            // '../../domain/constants/productVerification' — never retype the value list here.
-            status: 'valid',
-            isValid: dto.IsValid,
-            isPackCode: dto.IsPackCode,
-            isDTSCode: dto.IsDTSCode,
-            pack: dto.pack ? toVerifyProductCodePack(dto.pack) : null,
-        };
-    },
-
-    toDTO(input: VerifyProductCodeInput, device: DeviceMetadata): VerifyProductCodeRequestDTO {
-        return {
-            ScanCode: input.scanCode,
-            ScanCodeType: "",
-            ScanDateTime: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
-            ScanDeviceId: device.id,
-            ScanDeviceName: device.name,
-            ScanDeviceOS: device.os,
-            ScanDeviceOSVersion: device.osVersion,
-            ScanDeviceLanguage: device.language,
-            ScanCustomerId: input.scanCustomerId, // TODO: from auth session
-        };
-    },
+export const toVerifyProductCodeResult = (dto: VerifyProductCodeResponseDTO): VerifyProductCodeResult => {
+    return {
+        // TODO(claude): status derivation — map the response flags onto VerifyProductCodeStatus.
+        // Validate against VERIFY_PRODUCT_CODE_STATUS_VALUES imported from
+        // '../../domain/constants/productVerification' — never retype the value list here.
+        status: 'valid',
+        isValid: dto.IsValid,
+        isPackCode: dto.IsPackCode,
+        isDTSCode: dto.IsDTSCode,
+        pack: dto.pack ? toVerifyProductCodePack(dto.pack) : null,
+    };
 };
+
+export const toVerifyProductCodeRequestDTO = (input: VerifyProductCodeInput, device: DeviceMetadata): VerifyProductCodeRequestDTO => ({
+    ScanCode: input.scanCode,
+    ScanCodeType: "",
+    ScanDateTime: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
+    ScanDeviceId: device.id,
+    ScanDeviceName: device.name,
+    ScanDeviceOS: device.os,
+    ScanDeviceOSVersion: device.osVersion,
+    ScanDeviceLanguage: device.language,
+    ScanCustomerId: input.scanCustomerId, // TODO: from auth session
+});

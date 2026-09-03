@@ -85,7 +85,7 @@ function endpointModel(spec, endpoint) {
         }
     }
     for (const param of pathParams) inputFields.push({ name: camel(param.name), dtoField: null, type: param.type || 'string', session: false, pathParam: param.name });
-    for (const param of queryParams) inputFields.push({ name: camel(param.name), dtoField: null, type: param.type || 'string', session: false, queryParam: param.name });
+    for (const param of queryParams) inputFields.push({ name: camel(param.name), dtoField: null, type: param.type || 'string', session: false, queryParam: param.name, optional: param.optional === true });
 
     const usesDevice = hasBody && Object.values(sources).includes('device');
 
@@ -111,6 +111,10 @@ function endpointModel(spec, endpoint) {
         statusValues: `${snakeUpper(ActionPascal)}_STATUS_VALUES`,
         useCase: `${ActionPascal}UseCase`,
         mapper: `${ActionPascal}Mapper`,
+        // Function-style mapper exports (the repo convention: `toX(dto)`), both
+        // living in <Action>Mapper.ts — never a `<Action>Mapper = { … }` object.
+        toDomainFn: `to${ActionPascal}Result`,
+        toDTOFn: `to${ActionPascal}RequestDTO`,
         returnType: hasResponse ? `${ActionPascal}Result` : 'void',
     };
 }
@@ -280,7 +284,7 @@ function entityFile(f, e) {
     }
     if (e.inputFields.length) {
         const lines = e.inputFields.map((field) =>
-            `    ${field.name}: ${field.type};${field.session ? ' // TODO: from auth session' : ''}`
+            `    ${field.name}${field.optional ? '?' : ''}: ${field.type};${field.session ? ' // TODO: from auth session' : ''}`
         );
         parts.push(`export type ${e.input} = {\n${lines.join('\n')}\n};`);
     }
@@ -429,13 +433,13 @@ function mapperFile(f, e) {
         if (Array.isArray(e.responseSample) && !entityImports.includes(`${e.ActionPascal}Item`)) {
             entityImports.push(`${e.ActionPascal}Item`);
         }
-        toDomainSection = `    toDomain(dto: ${e.responseDTO}): ${e.entity} {\n${mapperToDomainBody(f, e).body}\n    },`;
+        toDomainSection = `export const ${e.toDomainFn} = (dto: ${e.responseDTO}): ${e.entity} => {\n${dedent(mapperToDomainBody(f, e).body, 4)}\n};`;
     }
 
     let toDTOSection = '';
     if (e.hasBody) {
         const deviceParam = e.usesDevice ? `, device: DeviceMetadata` : '';
-        toDTOSection = `    toDTO(input: ${e.input}${deviceParam}): ${e.requestDTO} {\n        return {\n${mapperToDTOBody(f, e)}\n        };\n    },`;
+        toDTOSection = `export const ${e.toDTOFn} = (input: ${e.input}${deviceParam}): ${e.requestDTO} => ({\n${dedent(mapperToDTOBody(f, e), 8)}\n});`;
     }
 
     const importLines = [
@@ -453,10 +457,14 @@ function mapperFile(f, e) {
         : '';
 
     return `${importLines.join('\n')}\n${cleanHelper}${helpers.length ? '\n' + helpers.join('\n\n') + '\n' : ''}
-export const ${e.mapper} = {
 ${[toDomainSection, toDTOSection].filter(Boolean).join('\n\n')}
-};
 `;
+}
+
+/** Remove `n` leading spaces from every line (bodies were written for an object-method nesting). */
+function dedent(text, n) {
+    const pad = ' '.repeat(n);
+    return text.split('\n').map((line) => (line.startsWith(pad) ? line.slice(n) : line)).join('\n');
 }
 
 // ------------------------------------------------ feature-level templates ----
@@ -477,15 +485,20 @@ ${entries.join('\n')}
 `;
 }
 
+/** The mapper functions a file needs: the response mapper, the request mapper, or both. */
+function mapperImportNames(e) {
+    return [e.hasResponse ? e.toDomainFn : null, e.hasBody ? e.toDTOFn : null].filter(Boolean).join(', ');
+}
+
 function serviceMethodArgs(e) {
     // path params ALWAYS come through — the endpoint URL expression needs them
     // regardless of whether a body is present
     const args = e.pathParams.map((p) => `${camel(p.name)}: ${p.type || 'string'}`);
     // domain input, NOT the transport DTO — the IService contract only speaks
-    // domain types (the service converts via mapper.toDTO)
+    // domain types (the service converts via to<Action>RequestDTO)
     if (e.hasBody) args.push(`input: ${e.input}`);
     if (e.queryParams.length) {
-        const queryFields = e.queryParams.map((p) => `${camel(p.name)}: ${p.type || 'string'}`).join('; ');
+        const queryFields = e.queryParams.map((p) => `${camel(p.name)}${p.optional ? '?' : ''}: ${p.type || 'string'}`).join('; ');
         args.push(`query: { ${queryFields} }`);
     }
     return args;
@@ -505,7 +518,7 @@ function payloadBuildLines(e) {
     if (!e.hasBody) return '';
     const deviceLine = e.usesDevice ? `        const device = await this.getDeviceMetadata();\n` : '';
     const deviceArg = e.usesDevice ? ', device' : '';
-    return `${deviceLine}        const payload = ${e.mapper}.toDTO(input${deviceArg});\n`;
+    return `${deviceLine}        const payload = ${e.toDTOFn}(input${deviceArg});\n`;
 }
 
 /**
@@ -550,7 +563,7 @@ function appServiceMethod(f, e) {
     // generic is the DOMAIN type and response.data is already mapped
     const generic = e.hasResponse ? e.returnType : 'void';
     const configEntries = [];
-    if (e.hasResponse) configEntries.push(`mapper: ${e.mapper}.toDomain`);
+    if (e.hasResponse) configEntries.push(`mapper: ${e.toDomainFn}`);
     if (e.queryParams.length) configEntries.push('params: query');
     const config = configEntries.length ? `, { ${configEntries.join(', ')} }` : '';
     let call;
@@ -648,7 +661,7 @@ function externalServiceMethod(f, e) {
 
     const resultSection = e.hasResponse
         ? `\n        const dto = await this.parseExternalJson<${e.responseDTO}>('${e.actionCamel}', response);
-        return ${e.mapper}.toDomain(dto);`
+        return ${e.toDomainFn}(dto);`
         : '';
 
     return `    async ${e.actionCamel}(${args}): Promise<${e.returnType}> {
@@ -683,7 +696,7 @@ function serviceFile(f) {
             e.hasBody && e.inputFields.length ? e.input : null,
         ].filter(Boolean);
         if (entityNames.length) imports.push(`import type { ${entityNames.join(', ')} } from '../../domain/entities/${e.entity}';`);
-        if (e.hasResponse || e.hasBody) imports.push(`import { ${e.mapper} } from '../mappers/${e.mapper}';`);
+        if (e.hasResponse || e.hasBody) imports.push(`import { ${mapperImportNames(e)} } from '../mappers/${e.mapper}';`);
     }
     if (f.usesDevice) {
         imports.push(...deviceHelperImports(f.endpoints.find((e) => e.usesDevice).ActionPascal));
@@ -716,7 +729,7 @@ function mockServiceMethod(f, e) {
     // renames them when the enriched mock starts filtering/paginating
     const args = serviceMethodArgs(e).map((arg) => `_${arg}`).join(', ');
     const body = e.hasResponse
-        ? `        await mockDelay();\n        return ${e.mapper}.toDomain(${e.endpointKey}_SAMPLE);`
+        ? `        await mockDelay();\n        return ${e.toDomainFn}(${e.endpointKey}_SAMPLE);`
         : `        await mockDelay();`;
     return `    async ${e.actionCamel}(${args}): Promise<${e.returnType}> {\n${body}\n    }`;
 }
@@ -728,7 +741,7 @@ function mockServiceFile(f) {
     for (const e of f.endpoints) {
         if (e.hasResponse) {
             imports.push(`import type { ${e.responseDTO} } from '../dtos/${e.ActionPascal}DTO';`);
-            imports.push(`import { ${e.mapper} } from '../mappers/${e.mapper}';`);
+            imports.push(`import { ${e.toDomainFn} } from '../mappers/${e.mapper}';`);
         }
         const entityNames = [
             e.hasResponse ? e.entity : null,
@@ -843,23 +856,18 @@ ${signatures.join('\n')}
 }
 
 function errorsFile(f) {
-    return `import type { AppError } from '@shared/types/errors';
+    return `import type { AppError, INFRA_ERROR_CODES } from '@shared/types/errors';
 
-// The feature reuses the app-wide error contract as-is. AppError's code union
-// (src/shared/types/errors.ts) is the ONLY allowed set — do not invent feature
-// codes like HTTP_ERROR/PARSE_ERROR and do not widen the type with
-// Omit<AppError, 'code'>: reviewers reject both. Map transport failures onto
-// these four (a bad payload is VALIDATION_ERROR, a bad response is
-// NETWORK_ERROR). If a genuinely new code is needed, add it to AppError itself
-// so every feature shares it.
-export const ${f.errorCodeValues} = [
-    'NETWORK_ERROR',
-    'AUTH_ERROR',
-    'TIMEOUT',
-    'VALIDATION_ERROR',
-] as const satisfies readonly AppError['code'][];
-
-export type ${f.errorCodes} = (typeof ${f.errorCodeValues})[number];
+/**
+ * This feature reuses AppError's own code union — a feature never invents its
+ * own codes, so a caller can handle NETWORK_ERROR / VALIDATION_ERROR the same
+ * way everywhere. A malformed payload is VALIDATION_ERROR, a bad HTTP response
+ * is NETWORK_ERROR. Never invent codes like HTTP_ERROR / PARSE_ERROR and never
+ * widen the type with Omit<AppError, 'code'> — reviewers reject both. A genuinely
+ * new code goes into AppError itself (src/shared/types/errors.ts), where every
+ * feature shares it.
+ */
+export type ${f.errorCodes} = INFRA_ERROR_CODES;
 
 export type ${f.errorType} = AppError;
 
@@ -868,6 +876,13 @@ export const ${f.errorFactory} = (
     message: string,
     originalError?: unknown
 ): ${f.errorType} => ({ code, message, originalError });
+
+export const ${f.errorCodeValues}: readonly ${f.errorCodes}[] = [
+    'NETWORK_ERROR',
+    'AUTH_ERROR',
+    'TIMEOUT',
+    'VALIDATION_ERROR',
+];
 
 export const ${f.errorGuard} = (error: unknown): error is ${f.errorType} =>
     typeof error === 'object' &&
@@ -1264,18 +1279,18 @@ function mapperTestFile(f, e) {
         }
 
         toDTOTest = `
-    it('toDTO builds the request payload from input${e.usesDevice ? ' + device metadata' : ''}', () => {
+    it('${e.toDTOFn} builds the request payload from input${e.usesDevice ? ' + device metadata' : ''}', () => {
         const input = {
 ${[inputLiteral, paramFields].filter(Boolean).join('\n')}
         };
-${deviceLiteral}        const dto = ${e.mapper}.toDTO(input${deviceArg});
+${deviceLiteral}        const dto = ${e.toDTOFn}(input${deviceArg});
 
 ${dtoAsserts.join('\n')}
     });
 `;
     }
 
-    const imports = [`import { ${e.mapper} } from '../data/mappers/${e.mapper}';`];
+    const imports = [`import { ${mapperImportNames(e)} } from '../data/mappers/${e.mapper}';`];
     if (needsDateImport) imports.push(`import { formatNumericGregorianDate } from '@shared/utils/dateFormat';`);
 
     // several shared utils (dateFormat, regex, …) import the @shared/components
@@ -1290,8 +1305,8 @@ ${dtoAsserts.join('\n')}
     return `${imports.join('\n')}
 ${barrelMock}${sampleConst}
 describe('${e.mapper}', () => {${e.hasResponse ? `
-    it('toDomain maps the sample response to the domain entity', () => {
-        const mapped = ${e.mapper}.toDomain(SAMPLE as never);
+    it('${e.toDomainFn} maps the sample response to the domain entity', () => {
+        const mapped = ${e.toDomainFn}(SAMPLE as never);
 
 ${asserts.join('\n')}
     });
@@ -1490,7 +1505,7 @@ function serviceEndpointImports(f, e) {
         e.hasBody && e.inputFields.length ? e.input : null,
     ].filter(Boolean);
     if (entityNames.length) imports.push(`import type { ${entityNames.join(', ')} } from '../../domain/entities/${e.entity}';`);
-    if (e.hasResponse || e.hasBody) imports.push(`import { ${e.mapper} } from '../mappers/${e.mapper}';`);
+    if (e.hasResponse || e.hasBody) imports.push(`import { ${mapperImportNames(e)} } from '../mappers/${e.mapper}';`);
     if (e.usesDevice) {
         imports.push(...deviceHelperImports(e.ActionPascal));
     }
@@ -1560,14 +1575,14 @@ function appendFeature(repo, spec, f, manifest) {
                     return `    async ${e.actionCamel}(${args}): Promise<${e.returnType}> {
         const sample: ${e.responseDTO} = ${sampleJson};
         await mockDelay();
-        return ${e.mapper}.toDomain(sample);
+        return ${e.toDomainFn}(sample);
     }\n`;
                 },
                 imports: (e) => {
                     const mockImports = [];
                     if (e.hasResponse) {
                         mockImports.push(`import type { ${e.responseDTO} } from '../dtos/${e.ActionPascal}DTO';`);
-                        mockImports.push(`import { ${e.mapper} } from '../mappers/${e.mapper}';`);
+                        mockImports.push(`import { ${e.toDomainFn} } from '../mappers/${e.mapper}';`);
                     }
                     const entityNames = [
                         e.hasResponse ? e.entity : null,
@@ -1780,6 +1795,12 @@ function validateSpec(spec) {
             problems.push(`${label}: responseSample must be a JSON object or array (got ${typeof endpoint.responseSample}) — wrap primitives in an object or use null for "none".`);
         }
 
+        for (const param of endpoint.queryParams ?? []) {
+            if (param && typeof param === 'object' && param.optional !== undefined && typeof param.optional !== 'boolean') {
+                problems.push(`${label}: queryParams "${param.name}" — optional must be true or false.`);
+            }
+        }
+
         // the query string is modeled in queryParams, never inline in the path
         if (typeof endpoint.path === 'string' && endpoint.path.includes('?')) {
             problems.push(`${label}: path contains a query string — move it to queryParams (paths hold the path only).`);
@@ -1951,7 +1972,7 @@ if (require.main === module) {
     process.exitCode = main();
 }
 
-const SKILL_VERSION = '1.19.3';
+const SKILL_VERSION = '1.20.0';
 
 /**
  * On-disk directory for a feature name, RELATIVE to src/features (may contain a

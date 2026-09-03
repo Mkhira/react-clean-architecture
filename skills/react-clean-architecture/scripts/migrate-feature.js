@@ -120,6 +120,18 @@ function importSpecifiers(content) {
     return [...content.matchAll(/^\s*import\b[^;]*?\bfrom\s+['"]([^'"]+)['"]/gm)].map((m) => m[1].split('/').pop());
 }
 
+/** `module basename → Set(named imports)` for every `import { a, b } from '…'` in a TS file. */
+function namedImports(content) {
+    const map = new Map();
+    for (const match of content.matchAll(/^\s*import\s+(?:type\s+)?\{([^}]*)\}\s+from\s+['"]([^'"]+)['"]/gm)) {
+        const module = match[2].split('/').pop();
+        const names = match[1].split(',').map((n) => n.trim().replace(/^type\s+/, '').split(/\s+as\s+/)[0]).filter(Boolean);
+        if (!map.has(module)) map.set(module, new Set());
+        for (const name of names) map.get(module).add(name);
+    }
+    return map;
+}
+
 function isMachineOwned(relative, f, includeTypes) {
     const inFeature = (sub) => relative.includes(`${path.sep}${f.featureDir}${path.sep}${sub}`);
     // The mock service's sample catalog is hand-enriched after generation
@@ -231,7 +243,7 @@ function extractErrorCodes(content) {
 function mergeErrorCodes(newContent, extraCodes) {
     if (!extraCodes.length) return newContent;
     const insertion = extraCodes.map((code) => `    '${code}',`).join('\n');
-    return newContent.replace(/\n\] as const;/, `\n${insertion}\n] as const;`);
+    return newContent.replace(/\n\];/, `\n${insertion}\n];`);
 }
 
 function main() {
@@ -356,6 +368,25 @@ function main() {
                     'behaviour was added to a machine-owned file and regenerating it would drop that behaviour. Nothing was written. ' +
                     'Move the logic into the use case / mapper (hand-owned) or migrate this feature by hand.'
                 );
+            }
+        }
+        // Mapper contract: the service imports named mapper exports. When the
+        // mapper on disk (hand-owned, never regenerated) still exports the
+        // pre-1.20.0 `<Action>Mapper = { toDomain, toDTO }` object while the
+        // template now imports `to<Entity>` / `to<Action>RequestDTO` functions,
+        // a regenerated service would not compile.
+        if (plannedForImports) {
+            const plannedNamed = namedImports(plannedForImports);
+            const existingNamed = namedImports(fs.readFileSync(servicePath, 'utf8'));
+            for (const [module, names] of existingNamed) {
+                if (!module.endsWith('Mapper') || !plannedNamed.has(module)) continue;
+                const missing = [...names].filter((name) => !plannedNamed.get(module).has(name));
+                if (missing.length) {
+                    report.problems.push(
+                        `mapper contract: ${path.relative(repo, servicePath)} imports ${missing.join(', ')} from mappers/${module} but the current template imports ${[...plannedNamed.get(module)].join(', ')} — ` +
+                        'the mapper predates the function-style mapper template (1.20.0). Nothing was written. Convert the mapper to exported functions by hand (REVIEW.md), then migrate.'
+                    );
+                }
             }
         }
         // Same method names, different parameters: the team changed a signature

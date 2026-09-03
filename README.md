@@ -2,7 +2,7 @@
 
 > An [Agent Skill](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview) that scaffolds **complete clean-architecture features** in a React Native (Expo) app from a single curl paste — and builds their **pixel-accurate screens from Figma**, verified live on the iOS simulator.
 
-![version](https://img.shields.io/badge/version-1.19.3-blue) ![tests](https://img.shields.io/badge/tests-224%20passing-brightgreen) ![deps](https://img.shields.io/badge/dependencies-zero-lightgrey) ![node](https://img.shields.io/badge/node-%E2%89%A518-339933) ![license](https://img.shields.io/badge/license-MIT-yellow)
+![version](https://img.shields.io/badge/version-1.20.0-blue) ![tests](https://img.shields.io/badge/tests-229%20passing-brightgreen) ![deps](https://img.shields.io/badge/dependencies-zero-lightgrey) ![node](https://img.shields.io/badge/node-%E2%89%A518-339933) ![license](https://img.shields.io/badge/license-MIT-yellow)
 
 Works with **Claude Code**, **Cursor**, **OpenAI Codex CLI**, and any agent that reads `AGENTS.md` / Markdown skills. One [install script](#install), three tools.
 
@@ -93,7 +93,7 @@ flowchart TB
 ```
 
 The dependency rule is **enforced, not aspirational**: `domain/` never imports `data/` (DTOs
-stay behind `mapper.toDTO` inside the service — interfaces take domain inputs), and the audit's
+stay behind `to<Action>RequestDTO(input)` inside the service — interfaces take domain inputs), and the audit's
 FAIL-level `arch-boundaries` check blocks any hand-edit that crosses a layer.
 
 Use cases classify transport failures across the app-wide `AppError` codes (`AUTH_ERROR`,
@@ -194,7 +194,7 @@ cp -R skills/react-clean-architecture ~/.claude/skills/
 
 ### Update
 
-The current release is **1.19.3** ([CHANGELOG](CHANGELOG.md)). **The skill tells you itself**: every run starts with `scripts/check-update.js`, which compares your installed version against the newest release tag and, when you are behind, prints the versions and the update command for your install before the first question. It never blocks the run, never updates anything on its own, and has no "dismiss" — it says it again on every run until you update. Offline, or without `git`, the check is skipped silently.
+The current release is **1.20.0** ([CHANGELOG](CHANGELOG.md)). **The skill tells you itself**: every run starts with `scripts/check-update.js`, which compares your installed version against the newest release tag and, when you are behind, prints the versions and the update command for your install before the first question. It never blocks the run, never updates anything on its own, and has no "dismiss" — it says it again on every run until you update. Offline, or without `git`, the check is skipped silently.
 
 How you update depends on how you installed:
 
@@ -295,7 +295,7 @@ Paths are relative to [`skills/react-clean-architecture/`](skills/react-clean-ar
 
 ## Testing the skill itself
 
-224 tests on Node's built-in runner — still zero dependencies:
+229 tests on Node's built-in runner — still zero dependencies:
 
 ```bash
 node --test skills/react-clean-architecture/tests/*.test.js

@@ -313,3 +313,26 @@ marketplace keeps the repo name so an already-added marketplace survives the ren
 `react-clean-plugin--v1.19.0`, which `latestTag` does not parse, so releases keep `git tag
 vX.Y.Z`. No `.lsp.json`: `typescript-language-server` is not on the maintainer's PATH and
 there is no official TypeScript LSP plugin to point at; revisit after a design-lane run.
+
+## 2026-09-03 — 1.20.0: the codebase is the convention, not the template
+
+Trying to migrate the four skill-generated zatcaReact features to 1.19 templates (see the
+1.19.1–1.19.3 entries: six refusals added to `migrate-feature.js`, nothing migrated) showed
+that reviewers had hand-converted every generated feature in the same three ways. The
+template was teaching the wrong pattern, and the migration tool was about to undo the
+reviewers' work. Decision: the repo's dominant form wins over the skill's own preference,
+even where the skill's form is arguably tighter.
+
+- Mapper functions (`to<Entity>(dto)`, `to<Action>RequestDTO(input)`) over a mapper
+  object: 9 of 12 mapper directories use functions; the object form existed only where the
+  skill had generated it.
+- `INFRA_ERROR_CODES` alias over a local `as const satisfies` array: the alias cannot drift
+  from `AppError`; the array form would silently lag when a code is added to the union.
+  The values array stays (the `is<Feature>Error` guard needs a runtime list) but is typed
+  from the alias.
+- `optional: true` on query params: the spec could not express `status?: string`, so the
+  team edited the service signature by hand — the exact edit that later blocked migration.
+
+Each convention is enforced three ways, as REVIEW.md promises: the template emits it, the
+`review-conventions` audit check fails its absence, and `migrate-feature.js` refuses to
+regenerate a service against a mapper that still has the old contract.

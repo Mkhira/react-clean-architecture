@@ -1,20 +1,15 @@
-import type { AppError } from '@shared/types/errors';
+import type { AppError, INFRA_ERROR_CODES } from '@shared/types/errors';
 
-// The feature reuses the app-wide error contract as-is. AppError's code union
-// (src/shared/types/errors.ts) is the ONLY allowed set — do not invent feature
-// codes like HTTP_ERROR/PARSE_ERROR and do not widen the type with
-// Omit<AppError, 'code'>: reviewers reject both. Map transport failures onto
-// these four (a bad payload is VALIDATION_ERROR, a bad response is
-// NETWORK_ERROR). If a genuinely new code is needed, add it to AppError itself
-// so every feature shares it.
-export const PRODUCT_VERIFICATION_ERROR_CODE_VALUES = [
-    'NETWORK_ERROR',
-    'AUTH_ERROR',
-    'TIMEOUT',
-    'VALIDATION_ERROR',
-] as const satisfies readonly AppError['code'][];
-
-export type PRODUCT_VERIFICATION_ERROR_CODES = (typeof PRODUCT_VERIFICATION_ERROR_CODE_VALUES)[number];
+/**
+ * This feature reuses AppError's own code union — a feature never invents its
+ * own codes, so a caller can handle NETWORK_ERROR / VALIDATION_ERROR the same
+ * way everywhere. A malformed payload is VALIDATION_ERROR, a bad HTTP response
+ * is NETWORK_ERROR. Never invent codes like HTTP_ERROR / PARSE_ERROR and never
+ * widen the type with Omit<AppError, 'code'> — reviewers reject both. A genuinely
+ * new code goes into AppError itself (src/shared/types/errors.ts), where every
+ * feature shares it.
+ */
+export type PRODUCT_VERIFICATION_ERROR_CODES = INFRA_ERROR_CODES;
 
 export type ProductVerificationError = AppError;
 
@@ -23,6 +18,13 @@ export const createProductVerificationError = (
     message: string,
     originalError?: unknown
 ): ProductVerificationError => ({ code, message, originalError });
+
+export const PRODUCT_VERIFICATION_ERROR_CODE_VALUES: readonly PRODUCT_VERIFICATION_ERROR_CODES[] = [
+    'NETWORK_ERROR',
+    'AUTH_ERROR',
+    'TIMEOUT',
+    'VALIDATION_ERROR',
+];
 
 export const isProductVerificationError = (error: unknown): error is ProductVerificationError =>
     typeof error === 'object' &&

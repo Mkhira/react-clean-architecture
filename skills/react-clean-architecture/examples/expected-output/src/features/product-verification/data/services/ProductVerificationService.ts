@@ -5,9 +5,9 @@ import { PRODUCT_VERIFICATION_ENDPOINTS } from '../endpoints/endpoints';
 import { createProductVerificationError } from '../../domain/errors/ProductVerificationError';
 import type { VerifyProductCodeResponseDTO } from '../dtos/VerifyProductCodeDTO';
 import type { VerifyProductCodeResult, VerifyProductCodeInput } from '../../domain/entities/VerifyProductCodeResult';
-import { VerifyProductCodeMapper } from '../mappers/VerifyProductCodeMapper';
+import { toVerifyProductCodeResult, toVerifyProductCodeRequestDTO } from '../mappers/VerifyProductCodeMapper';
 import type { GetScanHistoryResult } from '../../domain/entities/GetScanHistoryResult';
-import { GetScanHistoryMapper } from '../mappers/GetScanHistoryMapper';
+import { toGetScanHistoryResult } from '../mappers/GetScanHistoryMapper';
 import { Platform } from 'react-native';
 import { getStoredLanguage } from '@core/localization/i18n';
 import type { ITaxpayerAuthDeviceContextService } from '@core/device/ITaxpayerAuthDeviceContextService';
@@ -68,7 +68,7 @@ export class ProductVerificationService implements IProductVerificationService {
         const { productVerificationBaseUrl, productVerificationClientId, productVerificationClientSecret } = this.configService.get();
         const url = `${productVerificationBaseUrl}${PRODUCT_VERIFICATION_ENDPOINTS.VERIFY_PRODUCT_CODE}`;
         const device = await this.getDeviceMetadata();
-        const payload = VerifyProductCodeMapper.toDTO(input, device);
+        const payload = toVerifyProductCodeRequestDTO(input, device);
         const response = await this.requestExternal('verifyProductCode', url, {
             method: 'POST',
             headers: {
@@ -80,11 +80,11 @@ export class ProductVerificationService implements IProductVerificationService {
             body: JSON.stringify(payload),
         });
         const dto = await this.parseExternalJson<VerifyProductCodeResponseDTO>('verifyProductCode', response);
-        return VerifyProductCodeMapper.toDomain(dto);
+        return toVerifyProductCodeResult(dto);
     }
 
     async getScanHistory(query: { from: string }): Promise<GetScanHistoryResult> {
-        const response = await this.httpClient.get<GetScanHistoryResult>(PRODUCT_VERIFICATION_ENDPOINTS.GET_SCAN_HISTORY, { mapper: GetScanHistoryMapper.toDomain, params: query });
+        const response = await this.httpClient.get<GetScanHistoryResult>(PRODUCT_VERIFICATION_ENDPOINTS.GET_SCAN_HISTORY, { mapper: toGetScanHistoryResult, params: query });
         return response.data;
     }
 

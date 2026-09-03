@@ -109,7 +109,7 @@ test('app GET with query + path params: axios params config and function endpoin
     const endpoints = read(repo, 'src/features/order-tracking/data/endpoints/endpoints.ts');
     assert.match(endpoints, /GET_ORDER_EVENTS: \(orderId: string\) => `\/v1\/orders\/\$\{orderId\}\/events`,/);
     const service = read(repo, 'src/features/order-tracking/data/services/OrderTrackingService.ts');
-    assert.match(service, /this\.httpClient\.get<GetOrderEventsResult>\(ORDER_TRACKING_ENDPOINTS\.GET_ORDER_EVENTS\(orderId\), \{ mapper: GetOrderEventsMapper\.toDomain, params: query \}\)/);
+    assert.match(service, /this\.httpClient\.get<GetOrderEventsResult>\(ORDER_TRACKING_ENDPOINTS\.GET_ORDER_EVENTS\(orderId\), \{ mapper: toGetOrderEventsResult, params: query \}\)/);
     assert.ok(!service.includes('configService'), 'app-only service must not depend on IConfigService');
     // array response → no RequestDTO anywhere
     const dto = read(repo, 'src/features/order-tracking/data/dtos/GetOrderEventsDTO.ts');
@@ -149,11 +149,11 @@ test('device provenance: SERVICE gains getDeviceMetadata + DeviceMetadata DTO (v
     const { repo } = generateInto(spec);
     const service = read(repo, 'src/features/order-tracking/data/services/OrderTrackingService.ts');
     assert.match(service, /getDeviceMetadata/);
-    assert.match(service, /const payload = TrackOrderMapper\.toDTO\(input, device\);/);
+    assert.match(service, /const payload = toTrackOrderRequestDTO\(input, device\);/);
     // the repository is a pure passthrough now — no device fetch, no DTO conversion
     const repository = read(repo, 'src/features/order-tracking/data/repositories/OrderTrackingRepository.ts');
     assert.ok(!repository.includes('getDeviceMetadata'), 'repository must not fetch device metadata');
-    assert.ok(!repository.includes('toDTO'), 'repository must not convert to the transport DTO');
+    assert.ok(!repository.includes('RequestDTO('), 'repository must not convert to the transport DTO');
     assert.match(read(repo, 'src/features/order-tracking/data/dtos/TrackOrderDTO.ts'), /export type DeviceMetadata/);
     assert.match(read(repo, 'src/features/order-tracking/data/mappers/TrackOrderMapper.ts'), /DeviceId: device\.id,/);
 });
@@ -190,8 +190,8 @@ test('append mode: inserts at anchors with imports, idempotent on re-run', () =>
     assert.match(service, /async cancelOrder\(/);
     // v1.8.0: the service receives the domain input and converts via the mapper
     assert.match(service, /import type \{ CancelOrderInput \} from '\.\.\/\.\.\/domain\/entities\/CancelOrderResult';/);
-    assert.match(service, /import \{ CancelOrderMapper \} from '\.\.\/mappers\/CancelOrderMapper';/);
-    assert.ok(!service.includes('CancelOrderRequestDTO'), 'RequestDTO must stay inside the mapper');
+    assert.match(service, /import \{ toCancelOrderRequestDTO \} from '\.\.\/mappers\/CancelOrderMapper';/);
+    assert.ok(!/\bCancelOrderRequestDTO\b/.test(service), 'RequestDTO must stay inside the mapper (the service only imports toCancelOrderRequestDTO)');
     const iface = read(repo, 'src/features/order-tracking/domain/IRepositories/IOrderTrackingRepository.ts');
     assert.match(iface, /cancelOrder\(input: CancelOrderInput\): Promise<void>;/);
 
@@ -232,4 +232,55 @@ test('append that adds a FIRST external endpoint to an app-only service reports 
     const manifest = readManifest(repo);
     assert.ok(manifest.needsManual.some((note) => note.includes('ctor lacks configService')));
     assert.ok(manifest.needsManual.some((note) => note.includes('requestExternal')));
+});
+
+// ------------------------------------------------- 1.20.0 repo conventions ----
+
+test('1.20.0: mappers are exported functions, never a mapper object', () => {
+    const { repo } = generateInto(baseSpec());
+    const mapper = read(repo, 'src/features/order-tracking/data/mappers/TrackOrderMapper.ts');
+    assert.doesNotMatch(mapper, /export const TrackOrderMapper\s*=\s*\{/, 'no mapper object');
+    assert.match(mapper, /export const toTrackOrderResult = \(dto: TrackOrderResponseDTO\): TrackOrderResult => \{/);
+    assert.match(mapper, /export const toTrackOrderRequestDTO = \(input: TrackOrderInput\): TrackOrderRequestDTO => \(\{/);
+    // every consumer imports the functions by name
+    const service = read(repo, 'src/features/order-tracking/data/services/OrderTrackingService.ts');
+    assert.match(service, /import \{ toTrackOrderResult, toTrackOrderRequestDTO \} from '\.\.\/mappers\/TrackOrderMapper';/);
+    assert.match(service, /return toTrackOrderResult\(dto\);/, 'external host maps the parsed DTO through the function');
+    const test = read(repo, 'src/features/order-tracking/test/TrackOrderMapper.test.ts');
+    assert.match(test, /import \{ toTrackOrderResult, toTrackOrderRequestDTO \} from '\.\.\/data\/mappers\/TrackOrderMapper';/);
+    assert.match(test, /toTrackOrderResult\(SAMPLE as never\)/);
+    assert.match(test, /const dto = toTrackOrderRequestDTO\(input\);/);
+    // the generated mapper body is a real block at top-level indentation
+    assert.match(mapper, /=> \{\n    return \{/);
+});
+
+test('1.20.0: the errors file aliases INFRA_ERROR_CODES instead of deriving a local union', () => {
+    const { repo } = generateInto(baseSpec());
+    const errors = read(repo, 'src/features/order-tracking/domain/errors/OrderTrackingError.ts');
+    assert.match(errors, /import type \{ AppError, INFRA_ERROR_CODES \} from '@shared\/types\/errors';/);
+    assert.match(errors, /export type ORDER_TRACKING_ERROR_CODES = INFRA_ERROR_CODES;/);
+    assert.match(errors, /export const ORDER_TRACKING_ERROR_CODE_VALUES: readonly ORDER_TRACKING_ERROR_CODES\[\] = \[/);
+    assert.doesNotMatch(errors, /satisfies/);
+    assert.match(errors, /export type OrderTrackingError = AppError;/);
+});
+
+test('1.20.0: optional query params render as optional everywhere the query is typed', () => {
+    const spec = baseSpec();
+    spec.endpoints[0].method = 'GET';
+    spec.endpoints[0].requestSample = null;
+    spec.endpoints[0].requestFieldSources = {};
+    spec.endpoints[0].queryParams = [
+        { name: 'page', type: 'number' },
+        { name: 'status', type: 'string', optional: true },
+    ];
+    const { repo } = generateInto(spec);
+    const service = read(repo, 'src/features/order-tracking/data/services/OrderTrackingService.ts');
+    assert.match(service, /async trackOrder\(query: \{ page: number; status\?: string \}\)/);
+    assert.match(read(repo, 'src/features/order-tracking/data/IServices/IOrderTrackingService.ts'), /query: \{ page: number; status\?: string \}/);
+    assert.match(read(repo, 'src/features/order-tracking/domain/entities/TrackOrderResult.ts'), /    page: number;\n    status\?: string;/);
+    // the flag is validated
+    spec.endpoints[0].queryParams[1].optional = 'yes';
+    const bad = runScript('generate.js', [writeSpec(makeTmpDir('s'), spec), '--repo', makeFixtureRepo()]);
+    assert.equal(bad.status, 1);
+    assert.match(bad.stderr, /optional must be true or false/);
 });

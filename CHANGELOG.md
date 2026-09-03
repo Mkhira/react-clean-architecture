@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.20.0 — templates catch up with three conventions the team applied by hand
+
+The 1.19.x migration attempt showed the generated features were not behind the templates
+but ahead of them: reviewers had hand-converted three things on every skill-generated
+feature. All three are now the template, the REVIEW.md rule, and a `review-conventions`
+audit check.
+
+- **Mappers are exported functions.** `<Action>Mapper.ts` now exports
+  `to<Action>Result(dto)` and `to<Action>RequestDTO(input)` instead of a
+  `<Action>Mapper = { toDomain, toDTO }` object — the form nine of the repo's twelve mapper
+  directories use. The service, mock service, external transport and the generated mapper
+  test import the functions by name. The audit fails a mapper file that exports a mapper
+  object.
+- **The errors file aliases `INFRA_ERROR_CODES`.** `export type <FEATURE>_ERROR_CODES =
+  INFRA_ERROR_CODES` from `@shared/types/errors`, a `readonly <FEATURE>_ERROR_CODES[]`
+  values array, factory and guard — the shape reviewers rewrote establishment-signup into.
+  The audit fails the pre-1.20.0 `as const satisfies readonly AppError['code'][]` form.
+- **Optional query params.** `queryParams` entries accept `"optional": true`; the service
+  and interface signatures and the input type render `name?: type`. `validateSpec` rejects a
+  non-boolean flag. This is what application-status's hand-edited signature needed the spec
+  to say.
+
+`migrate-feature.js` gains a sixth refusal, **mapper contract**: a service that still
+imports the old mapper object while the template imports the functions is refused with the
+conversion instruction (the mapper is hand-owned and never regenerated). The
+`examples/expected-output` tree is regenerated. 5 new tests (224 → 229).
+
 ## 1.19.3 — migrate-feature.js: hand logic inside a machine-owned file is a refusal too
 
 With both zatcaReact specs corrected, establishment-signup passed every 1.19.2 check and

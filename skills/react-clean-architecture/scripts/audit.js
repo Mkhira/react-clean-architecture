@@ -394,7 +394,9 @@ function checkArchBoundaries(repo, f) {
  * PR #305). Each one is cheap to check and expensive to fix after review:
  *   - kebab-case feature directory (PascalCase dirs get rejected)
  *   - no legacy IServices/ IRepositories/ usecases/ directories
- *   - feature error types must not widen AppError's code union
+ *   - feature error types must not widen AppError's code union, and alias
+ *     INFRA_ERROR_CODES instead of deriving a union from a values array
+ *   - mappers are plain functions (toX(dto)), never a `<Action>Mapper = {}` object
  *   - no duplicated status/enum literal arrays outside domain/constants
  *   - raw numeric/keyword style values instead of theme tokens
  *   - files that nothing imports (dead placeholder modules)
@@ -402,7 +404,7 @@ function checkArchBoundaries(repo, f) {
 function checkReviewConventions(repo, f) {
     const problems = reviewConventionProblems(repo, f);
     if (problems.length) fail('review-conventions', problems.join('; '));
-    else pass('review-conventions', 'kebab dir, repo layout, AppError codes, shared enums, theme tokens, no dead modules');
+    else pass('review-conventions', 'kebab dir, repo layout, AppError codes, function mappers, shared enums, theme tokens, no dead modules');
 }
 
 /** Source with // and block comments removed — for checks that must not match prose. */
@@ -444,6 +446,19 @@ function reviewConventionProblems(repo, f) {
             if (content.includes(`'${invented}'`)) {
                 problems.push(`${f.errorType}.ts declares '${invented}', which is not an AppError code — map it onto NETWORK_ERROR / VALIDATION_ERROR`);
             }
+        }
+        // 1.20.0: the repo aliases the shared union; a union derived from a
+        // local values array (the pre-1.20.0 template) drifts from AppError
+        if (/as const satisfies readonly AppError\['code'\]\[\]/.test(content)) {
+            problems.push(`${f.errorType}.ts derives its code union from a local values array — alias INFRA_ERROR_CODES from @shared/types/errors instead (export type <FEATURE>_ERROR_CODES = INFRA_ERROR_CODES)`);
+        }
+    }
+
+    // mappers are plain functions in this repo (toGetXResult(dto), toXRequestDTO(input));
+    // reviewers reject the object form the skill generated before 1.20.0
+    for (const file of tsFilesUnder(path.join(base, 'data', 'mappers'))) {
+        if (/export const \w+Mapper\s*=\s*\{/.test(stripComments(fs.readFileSync(file, 'utf8')))) {
+            problems.push(`${path.relative(repo, file)} exports a mapper object — the repo convention is plain functions (to<Entity>(dto) / to<Action>RequestDTO(input)); split the object into exported functions`);
         }
     }
 

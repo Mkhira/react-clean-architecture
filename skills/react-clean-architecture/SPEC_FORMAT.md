@@ -25,7 +25,7 @@ mode and documentation.
 | `method` | `GET` \| `POST` \| `PUT` \| `DELETE` | PUT/DELETE need `IHttpClient` uncommented (manual, see SKILL.md) |
 | `path` | string | path only, query split out; app-host paths have the base-URL prefix stripped; `{param}` segments allowed |
 | `pathParams` | `{name, type}[]` | produces a function entry in endpoints.ts: `` KEY: (id: string) => `/v1/x/${id}` `` |
-| `queryParams` | `{name, type}[]` | app host → axios `config.params`; external → URL-appended with `encodeURIComponent` |
+| `queryParams` | `{name, type, optional?}[]` | app host → axios `config.params`; external → URL-appended with `encodeURIComponent`. `optional: true` renders `name?: type` in the service/interface signatures and the input type |
 | `hostType` | `"app"` \| `"external"` | app = axios `IHttpClient`; external = `fetch` + AbortController + `AppConfig.timeout` |
 | `baseUrl` | object \| null | external only — see below |
 | `headers` | Header[] | external/custom only — see below |

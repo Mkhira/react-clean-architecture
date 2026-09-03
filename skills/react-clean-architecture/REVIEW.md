@@ -25,6 +25,25 @@ failures onto the existing four: a malformed payload is `VALIDATION_ERROR`, a ba
 response is `NETWORK_ERROR`. A genuinely new code goes into `AppError` itself, where every
 feature shares it — and that is a core edit, so ask first.
 
+**Mappers are plain functions.** A mapper file exports `to<Entity>(dto)` for the response
+and `to<Action>RequestDTO(input)` for the request — `toGetApplicationStatusListResult`,
+`toTaxpayerLoginRequestDTO` — never a `<Action>Mapper = { toDomain, toDTO }` object. Nine of
+the repo's twelve feature mapper directories use the function form; the object form the skill
+generated before 1.20.0 was hand-converted by reviewers. Sub-mappers (`toXItem`, `toXMeta`)
+are top-level functions in the same file; `cleanString` stays mapper-local.
+
+**The errors file aliases the shared union.** `export type <FEATURE>_ERROR_CODES =
+INFRA_ERROR_CODES` (from `@shared/types/errors`), `export type <Feature>Error = AppError`, a
+`create<Feature>Error` factory, a `readonly <FEATURE>_ERROR_CODES[]` values array and an
+`is<Feature>Error` guard. Do not derive the union from a local `as const satisfies` array —
+it drifts from `AppError` the day a code is added there.
+
+**Optional query params are optional in the type.** When the API tolerates a missing query
+param, the spec marks it `{ "name": "status", "type": "string", "optional": true }` and the
+generated `query: { status?: string }` / input type say so; callers never pad with empty
+strings. A required-typed param the callers omit is exactly the kind of hand edit that later
+blocks `migrate-feature.js` (signature drift).
+
 **Never swallow a failure.** Every `catch` that converts to `Result.err` logs first via the
 injected `ILogger` (`this.logger.exception(...)`). Use cases take the logger as a
 constructor arg; `register-di.js` wires it through `withLogger`.
