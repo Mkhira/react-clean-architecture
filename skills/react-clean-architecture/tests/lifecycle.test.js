@@ -329,3 +329,50 @@ test('migrate: refuses features without a persisted spec', () => {
     assert.equal(result.status, 1);
     assert.match(result.stderr, /persisted spec/);
 });
+
+test('migrate: never regenerates the hand-enriched mock service', () => {
+    const { repo } = fullFixture(baseSpec({ mock: true }));
+    const mock = path.join(repo, 'src/features/order-tracking/data/services/OrderTrackingMockService.ts');
+    assert.ok(fs.existsSync(mock), 'fixture should have generated a mock service');
+    fs.appendFileSync(mock, '\n// hand-enriched catalog marker\n');
+    const result = runScript('migrate-feature.js', ['OrderTracking', '--repo', repo, '--apply']);
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    const report = JSON.parse(result.stdout.slice(0, result.stdout.lastIndexOf('}') + 1));
+    assert.ok(report.preserved.some((p) => p.endsWith('OrderTrackingMockService.ts')), 'mock service must be preserved');
+    assert.match(fs.readFileSync(mock, 'utf8'), /hand-enriched catalog marker/);
+});
+
+test('migrate: refuses to write when the service has drifted from the persisted spec', () => {
+    /*
+     * Live 2026-09-03: application-status's spec still listed an endpoint the
+     * team had replaced by hand; --apply would have regenerated the service
+     * from the stale spec and thrown the hand change away.
+     */
+    const { repo } = fullFixture();
+    const service = path.join(repo, 'src/features/order-tracking/data/services/OrderTrackingService.ts');
+    const before = fs.readFileSync(service, 'utf8').replace(/\n}\s*$/, '\n    async cancelOrder(): Promise<void> {}\n}\n');
+    fs.writeFileSync(service, before);
+    const result = runScript('migrate-feature.js', ['OrderTracking', '--repo', repo, '--apply']);
+    assert.equal(result.status, 2, result.stdout + result.stderr);
+    assert.match(result.stdout, /spec drift/);
+    assert.match(result.stdout, /service has cancelOrder not in the spec/);
+    assert.match(result.stdout, /Refused/);
+    assert.equal(fs.readFileSync(service, 'utf8'), before, 'nothing may be written under drift');
+});
+
+test('migrate: refuses a design-only record instead of crashing on its empty endpoint list', () => {
+    /*
+     * Design-only runs persist { feature, skillVersion, design } — no endpoints, no
+     * generated files. 1.19.0 and earlier crashed inside buildFilePlan on them
+     * (TypeError in controllerFile) — live on TaxStampValidation, 2026-09-03.
+     */
+    const repo = makeFixtureRepo();
+    fs.mkdirSync(path.join(repo, 'src/features/tax-stamp'), { recursive: true });
+    fs.writeFileSync(path.join(repo, 'src/features/tax-stamp/feature-spec.json'), JSON.stringify({
+        feature: 'TaxStamp', skillVersion: '1.5.0', design: { screens: [{ name: 'Main', status: 'verified' }] },
+    }));
+    const result = runScript('migrate-feature.js', ['TaxStamp', '--repo', repo]);
+    assert.equal(result.status, 1, result.stderr);
+    assert.match(result.stderr, /design-only record/);
+    assert.doesNotMatch(result.stderr, /TypeError/);
+});

@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.19.1 — migrate-feature.js: three ways it could destroy hand work, closed
+
+Found while preparing the first bulk migration (1.14.2 → 1.19.0 templates) across the four
+skill-generated features in zatcaReact. `migrate-feature.js` **crashed** on the two
+design-only records (`TypeError` in `controllerFile` — no endpoints to plan from); it now
+refuses them with a message. It would have **regenerated the mock service**, whose sample
+catalog the skill itself tells you to hand-enrich; the mock is now hand-owned and preserved.
+And on application-status it would have **rewritten the service from a stale spec** — the team
+had replaced an endpoint by hand since generation — so a spec-drift check now compares the
+service's `async` methods with the spec's actions and refuses to write when they differ.
+New `workflows/migrate-features.workflow.js`, a Claude Code dynamic workflow for migrating
+every feature with one migrate+audit agent and one adversarial reviewer per feature
+(LIFECYCLE.md "Migrate at scale"). 3 new tests (217 → 220).
+
 ## 1.19.0 — frontmatter fields, argument pre-fill, inlined pre-checks, skill-scoped hooks, plugin renamed
 
 Claude Code reads three more frontmatter fields: `argument-hint` (shown in the `/` menu),

@@ -80,6 +80,9 @@ function appErrorCodes(repo) {
 /** Which planned files the migration owns. Paths are repo-relative. */
 function isMachineOwned(relative, f, includeTypes) {
     const inFeature = (sub) => relative.includes(`${path.sep}${f.featureDir}${path.sep}${sub}`);
+    // The mock service's sample catalog is hand-enriched after generation
+    // (SKILL.md Step 5.3) — regenerating it would throw that work away.
+    if (relative.endsWith(`${path.sep}${f.mockServiceClass}.ts`)) return false;
     if (inFeature(path.join('data', 'endpoints') + path.sep)) return true;
     if (inFeature(path.join('data', 'services') + path.sep)) return true;
     if (inFeature(path.join('data', 'repositories') + path.sep)) return true;
@@ -221,6 +224,18 @@ function main() {
         return 1;
     }
 
+    // A design-only record ({feature, skillVersion, design}) has no machine-owned
+    // files: generate.js never ran for it, so there is nothing to regenerate and
+    // buildFilePlan would crash on the empty endpoint list (found 2026-09-03 on
+    // TaxStampValidation and IndividualSignup).
+    if (!Array.isArray(spec.endpoints) || !spec.endpoints.length) {
+        console.error(
+            `migrate-feature.js: ${path.relative(repo, specPath)} is a design-only record (no endpoints) — ` +
+            'nothing machine-owned to migrate; its screens are hand-written and stay as they are.'
+        );
+        return 1;
+    }
+
     const fromVersion = spec.skillVersion ?? '1.0.0 (pre-stamping)';
     const f = featureModel(spec);
     f.featureDir = featureDirName;
@@ -241,7 +256,31 @@ function main() {
         problems: [],
     };
 
-    const pendingRelocation = relocateOldLayout(repo, f, apply, report);
+    // Spec drift: the persisted spec must still describe the service on disk.
+    // Regenerating machine-owned files from a spec the team has since moved
+    // away from (live on application-status, 2026-09-03: the spec named
+    // getApplicationStatusFilterOptions, the code had getApplicationStatusByNumber)
+    // would silently overwrite hand changes — refuse, and never write.
+    const servicePath = path.join(repo, 'src', 'features', f.featureDir, 'data', 'services', `${f.serviceClass}.ts`);
+    if (fs.existsSync(servicePath)) {
+        const methods = [...fs.readFileSync(servicePath, 'utf8').matchAll(/^ {4}async\s+([A-Za-z0-9_]+)\s*\(/gm)].map((m) => m[1]);
+        const actions = f.endpoints.map((e) => e.action);
+        const onlyInCode = methods.filter((m) => !actions.includes(m));
+        const onlyInSpec = actions.filter((a) => !methods.includes(a));
+        if (onlyInCode.length || onlyInSpec.length) {
+            report.problems.push(
+                `spec drift: ${path.relative(repo, servicePath)} no longer matches ${path.relative(repo, specPath)} — ` +
+                `${onlyInCode.length ? `service has ${onlyInCode.join(', ')} not in the spec` : ''}` +
+                `${onlyInCode.length && onlyInSpec.length ? '; ' : ''}` +
+                `${onlyInSpec.length ? `spec has ${onlyInSpec.join(', ')} not in the service` : ''}. ` +
+                'Nothing was written. Bring the spec back in line first (an append run for the new endpoints, or edit feature-spec.json to match the code), then migrate.'
+            );
+        }
+    }
+    const write = apply && !report.problems.length;
+    if (apply && !write) report.mode = 'refused (dry-run report below)';
+
+    const pendingRelocation = relocateOldLayout(repo, f, write, report);
 
     for (const [relative, plannedContent] of planned) {
         const absolute = path.join(repo, relative);
@@ -279,21 +318,23 @@ function main() {
             report.problems.push(`${relative}: expected file missing — run generate.js in append/create mode instead of migrating`);
             continue;
         }
-        if (apply) {
+        if (write) {
             fs.writeFileSync(absolute, nextContent);
         }
         report.updated.push(relative);
     }
 
-    if (apply && !report.problems.length) {
+    if (write && !report.problems.length) {
         spec.skillVersion = SKILL_VERSION;
         fs.writeFileSync(specPath, JSON.stringify(spec, null, 2) + '\n');
     }
 
     console.log(JSON.stringify(report, null, 2));
-    console.log(apply
+    console.log(write
         ? `\nMigrated to ${SKILL_VERSION}. Review \`git diff\`, then run audit.js against ${path.relative(repo, specPath)}.`
-        : '\nDry run only — re-run with --apply to execute.');
+        : apply
+            ? '\nRefused — see problems; nothing was written.'
+            : '\nDry run only — re-run with --apply to execute.');
     return report.problems.length ? 2 : 0;
 }
 
