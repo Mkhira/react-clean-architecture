@@ -325,28 +325,33 @@ test('the plugin hooks.json carries the compaction pair, manual-only, pointing a
 });
 
 test('the frontmatter hook command finds the skill for a plugin install, a user symlink, and neither', () => {
-    const { execSync } = require('child_process');
+    const { spawnSync } = require('child_process');
     const skill = fs.readFileSync(path.join(SKILL_DIR, 'SKILL.md'), 'utf8');
-    const command = skill.match(/command: '(for d in [^\n]*?pre-compact\.js[^\n]*?exit 0)'/)[1];
+    const command = skill.match(/command: '(for d in [^\n]*?guard-self-update\.js[^\n]*?exit 0)'/)[1];
     const repo = makeTmpDir('resolve');
-    manifest(repo, { spec: '/nowhere/spec.json' }); // run in progress, spec missing → the hook blocks
-    const stdin = JSON.stringify({ cwd: repo, trigger: 'manual' });
-    const run = (env) => execSync(`sh -c '${command.replace(/'/g, "'\\''")}'`, { input: stdin, env, encoding: 'utf8', cwd: repo });
+    // a forbidden command → the guard exits 2 when (and only when) the script was found
+    const stdin = JSON.stringify({ cwd: repo, tool_name: 'Bash', tool_input: { command: '/plugin update react-clean-plugin' } });
+    const run = (env) => spawnSync('sh', ['-c', command], { input: stdin, env, encoding: 'utf8', cwd: repo });
 
     // 1. plugin install: CLAUDE_PLUGIN_ROOT/skills/react-clean-architecture
     const pluginRoot = makeTmpDir('plugin');
     fs.mkdirSync(path.join(pluginRoot, 'skills'), { recursive: true });
     fs.symlinkSync(SKILL_DIR, path.join(pluginRoot, 'skills', 'react-clean-architecture'));
-    assert.match(run({ PATH: process.env.PATH, HOME: makeTmpDir('home'), CLAUDE_PROJECT_DIR: repo, CLAUDE_PLUGIN_ROOT: pluginRoot }), /"decision":"block"/);
+    const viaPlugin = run({ PATH: process.env.PATH, HOME: makeTmpDir('home'), CLAUDE_PROJECT_DIR: repo, CLAUDE_PLUGIN_ROOT: pluginRoot });
+    assert.equal(viaPlugin.status, 2, viaPlugin.stderr);
+    assert.match(viaPlugin.stderr, /never update the skill yourself/);
 
     // 2. user-scoped symlink: $HOME/.claude/skills/react-clean-architecture, no plugin variable
     const home = makeTmpDir('home');
     fs.mkdirSync(path.join(home, '.claude', 'skills'), { recursive: true });
     fs.symlinkSync(SKILL_DIR, path.join(home, '.claude', 'skills', 'react-clean-architecture'));
-    assert.match(run({ PATH: process.env.PATH, HOME: home, CLAUDE_PROJECT_DIR: repo }), /"decision":"block"/);
+    const viaSymlink = run({ PATH: process.env.PATH, HOME: home, CLAUDE_PROJECT_DIR: repo });
+    assert.equal(viaSymlink.status, 2, viaSymlink.stderr);
 
     // 3. nothing installed where the command looks → silent exit 0, never a broken session
-    assert.equal(run({ PATH: process.env.PATH, HOME: makeTmpDir('home'), CLAUDE_PROJECT_DIR: repo }), '');
+    const nowhere = run({ PATH: process.env.PATH, HOME: makeTmpDir('home'), CLAUDE_PROJECT_DIR: repo });
+    assert.equal(nowhere.status, 0);
+    assert.equal(nowhere.stdout + nowhere.stderr, '');
 });
 
 test('generate.js records the spec path in the manifest and audit.js repoints it on persist', () => {

@@ -336,3 +336,26 @@ even where the skill's form is arguably tighter.
 Each convention is enforced three ways, as REVIEW.md promises: the template emits it, the
 `review-conventions` audit check fails its absence, and `migrate-feature.js` refuses to
 regenerate a service against a mapper that still has the old contract.
+
+## 2026-09-03 — 1.20.1 / 1.20.2: what Claude Code 2.1.259 actually does with skill hooks
+
+Verified with fresh headless sessions (`claude -p`, stream-json input so `/compact` can be
+sent as a message; hook records read from the session transcript) against the installed
+plugin. Three facts, each of which changed the wiring:
+
+1. **Skill-frontmatter hooks are registered and fire for tool events and Stop**, and they
+   stay active for the rest of the session once the skill has been invoked (the Stop gate
+   blocked in a later turn).
+2. **`${CLAUDE_SKILL_DIR}` is not expanded inside hook `command:` strings.** Hooks get
+   `CLAUDE_PLUGIN_ROOT` for a plugin-provided skill and no skill variable at all for a
+   symlinked or copied skill. Every 1.20.0 hook therefore failed silently (non-blocking
+   error). 1.20.1: each command locates the skill itself — plugin root, then the project's
+   `.claude/skills`, then the user's — and exits 0 when none exists.
+3. **PreCompact/PostCompact are never dispatched to skill-frontmatter hooks.** A manual
+   `/compact` went through with a manifest present and no spec on disk. 1.20.2: the pair
+   lives in the plugin's `hooks/hooks.json` (`${CLAUDE_PLUGIN_ROOT}`-addressed); verified —
+   the refusal fires without a spec, and the resume context is injected after a real
+   compaction. Symlink/copy installs get the pair from a README settings snippet.
+
+Also observed: inside a hook environment the process can inherit another plugin's
+`CLAUDE_PLUGIN_DATA`; `check-update.js` only trusts a data dir that names this plugin.
