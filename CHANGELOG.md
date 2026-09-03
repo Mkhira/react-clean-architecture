@@ -11,7 +11,22 @@ word, "mock" or a pasted curl/Figma link given with the invocation skips only th
 it answers — every other question is still asked, one per message. The update check and
 Step 1's dirty-tree check are pre-run by Claude Code at invocation (`!` dynamic context)
 and their output is inlined into SKILL.md; other hosts see the command and run it as
-before. `<skill>` is documented as `${CLAUDE_SKILL_DIR}`. No script changes.
+before. `<skill>` is documented as `${CLAUDE_SKILL_DIR}`.
+
+Five skill-scoped hooks, wired in SKILL.md's frontmatter and shipped as zero-dependency Node
+scripts under `scripts/hooks/` (Claude Code only; other hosts keep the prose they back up):
+`pre-compact.js` refuses a manual `/compact` while a run is in progress and no spec is on
+disk; `post-compact.js` re-injects the spec/manifest paths and screen progress after the
+compaction; `guard-self-update.js` blocks `git pull`/`checkout` of the skill clone,
+`/plugin update`, `npx skills add` and `install.sh` mid-session ("never update the skill
+yourself", enforced); `stop-gate.js` is a deterministic command hook that blocks a stop only
+when the implementation is finished but working files, `TODO(claude)` markers or
+COMPONENTS.md drift remain — it never fires on the skill's own pauses or on a question to the
+user, and honours `stop_hook_active`; `format-feature-file.js` runs the repo's prettier on
+every `.ts`/`.tsx` written under `src/features/` or `app/service-flow/`. To make the
+compaction pair work, `generate.js` now records the spec path in the manifest (`spec`) and
+`audit.js --persist-spec` repoints it at the persisted copy. 24 new tests (191 → 215), all
+driven through stdin JSON like Claude Code does.
 
 ## 1.18.2 — README/install.sh doc drift + README version guard
 

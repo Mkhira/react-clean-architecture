@@ -43,6 +43,10 @@ feature off.
   finishes — the lane diffs tsc against the baseline and appends its navigation files to the
   manifest — and deletes them at DESIGN.md §7. The manifest is also the rollback map: on
   abort, delete its `created` files and `git checkout --` its `patched` files.
+- In Claude Code a Stop hook (`scripts/hooks/stop-gate.js`) re-checks this before a run can
+  end: working files still present once the implementation is finished, any `TODO(claude)`
+  left in the feature, or COMPONENTS.md drift block the stop with the list. It never fires
+  on the skill's own pauses or on a question to the user.
 
 ## Reminders the audit prints
 

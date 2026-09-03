@@ -1890,7 +1890,10 @@ function main() {
     }
 
     const { files, perEndpoint } = buildFilePlan(spec, f, testsDirName(repo, f.featureDir));
-    const manifest = { feature: f.feature, featureDir: f.featureDir, mode: spec.mode, created: [], skipped: [], patched: [], needsClaude: [], needsManual: [] };
+    // `spec` = where this run's spec lives, so the compaction hooks (scripts/hooks/)
+    // can tell whether the resume artifact is on disk; audit.js --persist-spec
+    // repoints it at the persisted copy.
+    const manifest = { feature: f.feature, featureDir: f.featureDir, mode: spec.mode, spec: path.resolve(specPath), created: [], skipped: [], patched: [], needsClaude: [], needsManual: [] };
 
     // Append requires a skill-shaped feature. A pre-skill feature (different
     // layout, no anchors) gets NO generated files — Claude edits it by hand,

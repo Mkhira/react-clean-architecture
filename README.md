@@ -2,7 +2,7 @@
 
 > An [Agent Skill](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview) that scaffolds **complete clean-architecture features** in a React Native (Expo) app from a single curl paste — and builds their **pixel-accurate screens from Figma**, verified live on the iOS simulator.
 
-![version](https://img.shields.io/badge/version-1.18.2-blue) ![tests](https://img.shields.io/badge/tests-191%20passing-brightgreen) ![deps](https://img.shields.io/badge/dependencies-zero-lightgrey) ![node](https://img.shields.io/badge/node-%E2%89%A518-339933) ![license](https://img.shields.io/badge/license-MIT-yellow)
+![version](https://img.shields.io/badge/version-1.18.2-blue) ![tests](https://img.shields.io/badge/tests-215%20passing-brightgreen) ![deps](https://img.shields.io/badge/dependencies-zero-lightgrey) ![node](https://img.shields.io/badge/node-%E2%89%A518-339933) ![license](https://img.shields.io/badge/license-MIT-yellow)
 
 Works with **Claude Code**, **Cursor**, **OpenAI Codex CLI**, and any agent that reads `AGENTS.md` / Markdown skills. One [install script](#install), three tools.
 
@@ -254,6 +254,23 @@ The agent walks the checklist in [SKILL.md](skills/react-clean-architecture/SKIL
 | [examples/](skills/react-clean-architecture/examples/) | filled spec + full expected output tree |
 | [evals/](skills/react-clean-architecture/evals/) | end-to-end eval scenarios against a real repo copy |
 
+### Hooks (Claude Code only)
+
+`SKILL.md`'s frontmatter wires five skill-scoped hooks, all zero-dependency Node scripts in
+`skills/react-clean-architecture/scripts/hooks/`. Four of them are inert unless a run is in
+progress (`.claude-skill-manifest.json` in the repo root) — an unrelated session never pays
+for them. Other hosts have no hook system; the SKILL.md text they back up is unchanged.
+
+| Hook | Event | What it does |
+|---|---|---|
+| `guard-self-update.js` | PreToolUse (Bash) | blocks `git pull`/`checkout`/… of the skill clone, `/plugin update`, `npx skills add`, `install.sh` — SKILL.md's "never update the skill yourself", enforced |
+| `format-feature-file.js` | PostToolUse (Edit\|Write) | runs the repo's prettier on every `.ts`/`.tsx` written under `src/features/` or `app/service-flow/`; failures are swallowed |
+| `pre-compact.js` | PreCompact (manual) | refuses `/compact` while a run is in progress and no spec is on disk (the resume artifact) |
+| `post-compact.js` | PostCompact | re-injects the spec/manifest paths and the screen progress so the resume never depends on the summary |
+| `stop-gate.js` | Stop | deterministic definition-of-done check: working files left after the implementation is finished, `TODO(claude)` in the feature, COMPONENTS.md drift. Never fires on the skill's own pauses or on a question to the user; honours `stop_hook_active` |
+
+Test them the same way as the scripts: `tests/hooks.test.js` pipes stdin JSON into each one.
+
 ## Scripts reference
 
 | Script | Job |
@@ -279,7 +296,7 @@ Paths are relative to [`skills/react-clean-architecture/`](skills/react-clean-ar
 
 ## Testing the skill itself
 
-191 tests on Node's built-in runner — still zero dependencies:
+215 tests on Node's built-in runner — still zero dependencies:
 
 ```bash
 node --test skills/react-clean-architecture/tests/*.test.js

@@ -635,6 +635,7 @@ function persistSpec(repo, spec, f) {
         try {
             const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
             manifest.created = [...new Set([...(manifest.created ?? []), relative])];
+            manifest.spec = relative; // the hooks' resume artifact is now the persisted copy
             fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
         } catch {
             // unreadable manifest: leave it alone — rollback already warns on it

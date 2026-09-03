@@ -39,6 +39,7 @@ function runScript(script, args, options = {}) {
         encoding: 'utf8',
         input: options.stdin,
         cwd: options.cwd,
+        env: options.env ? { ...process.env, ...options.env } : process.env,
     });
     return { status: result.status, stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
 }

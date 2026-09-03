@@ -15,6 +15,31 @@ description: >-
 argument-hint: "[feature name] [curl paste | figma link | 'design only' | 'mock']"
 effort: high
 allowed-tools: Bash(node *), Bash(npx tsc *), Bash(npx jest *), Bash(npx expo *), Bash(xcrun simctl *), Bash(idb *), Bash(git status *), Bash(git describe *), Bash(command -v *), Read, Edit, Write, Glob, Grep
+hooks:
+  PreToolUse:
+    - matcher: "Bash"
+      hooks:
+        - type: command
+          command: node "${CLAUDE_SKILL_DIR}/scripts/hooks/guard-self-update.js"
+  PostToolUse:
+    - matcher: "Edit|Write"
+      hooks:
+        - type: command
+          command: node "${CLAUDE_SKILL_DIR}/scripts/hooks/format-feature-file.js"
+  PreCompact:
+    - matcher: "manual"
+      hooks:
+        - type: command
+          command: node "${CLAUDE_SKILL_DIR}/scripts/hooks/pre-compact.js"
+  PostCompact:
+    - hooks:
+        - type: command
+          command: node "${CLAUDE_SKILL_DIR}/scripts/hooks/post-compact.js"
+  Stop:
+    - hooks:
+        - type: command
+          command: node "${CLAUDE_SKILL_DIR}/scripts/hooks/stop-gate.js"
+          timeout: 20
 ---
 
 # react-clean-architecture
@@ -126,7 +151,9 @@ Non-negotiables:
 - **Never block on it.** The user does not have to update to run the skill, and an update
   mid-run would swap the scripts under a half-finished feature. Offer it, continue working.
 - **Never update the skill yourself** — no `git pull`, no `/plugin update`, no re-running
-  `install.sh`. It is their install; the command is theirs to run, between runs.
+  `install.sh`. It is their install; the command is theirs to run, between runs. (In Claude
+  Code a PreToolUse hook, `scripts/hooks/guard-self-update.js`, blocks those commands
+  mechanically.)
 - **Never suppress it.** There is deliberately no "dismissed" state: if they say "later" or
   ignore it, tell them again on the next run, and every run after that, until the versions
   match. Saying it once and going quiet is how a copy stays six versions behind.
@@ -170,6 +197,12 @@ Before every pause, make sure everything needed to resume is ON DISK — the spe
 (name its exact path in the pause message so it survives the summary), the persisted
 design record, `.claude-skill-manifest.json`, and your todo-tool checklist state. After
 the user returns, re-read those files as needed; never rely on pre-compaction chat detail.
+
+In Claude Code two skill-scoped hooks back this up (`scripts/hooks/`): `pre-compact.js`
+refuses a manual `/compact` while a run is in progress (manifest present) and no spec is on
+disk; `post-compact.js` re-injects the spec/manifest paths and the screen progress after the
+compaction. They are a backstop, not a substitute — still name the paths in the pause message,
+other hosts have no hooks.
 
 ## Step 0z — Arguments already given
 
