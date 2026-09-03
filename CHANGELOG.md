@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.18.2 — README/install.sh doc drift + README version guard
+
+1.18.1 shipped with the README badge and "current release" line still saying 1.18.0. The
+version-drift test only compared the two plugin manifests against `SKILL_VERSION`; it now
+reads `README.md` too, so the badge and the release line fail the suite when they lag.
+`install.sh`'s AGENTS.md block and Cursor rule named only three of the routed docs
+(DESIGN.md, SPEC_FORMAT.md, AUDIT.md); both now list every file SKILL.md defers to
+(INTAKE.md, APPEND.md, LIFECYCLE.md, REVIEW.md, FORMS.md, COMPONENTS.md as well), so a
+flat-text host knows which files it will be sent to. No behaviour change in the skill.
+
 ## 1.18.1 — register-navigation.js keeps the translation files' `\uXXXX` escapes
 
 `updateTranslations` re-serializes `en.json`/`ar.json` through `JSON.stringify`, which writes

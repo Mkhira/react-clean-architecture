@@ -204,6 +204,20 @@ test('the released version is one number in three places', () => {
     assert.equal(marketplace.plugins[0].version, SKILL_VERSION, 'marketplace.json version drifted from SKILL_VERSION');
 });
 
+test('README badge and "current release" line carry the same version', () => {
+    /*
+     * 1.18.1 shipped with the README still saying 1.18.0: nothing read the
+     * README, so nothing noticed. Both user-facing spots are now pinned.
+     */
+    const readme = fs.readFileSync(path.join(REPO_ROOT, 'README.md'), 'utf8');
+    const badge = readme.match(/badge\/version-(\d+\.\d+\.\d+)-blue/);
+    const current = readme.match(/The current release is \*\*(\d+\.\d+\.\d+)\*\*/);
+    assert.ok(badge, 'README version badge missing');
+    assert.ok(current, 'README "current release" line missing');
+    assert.equal(badge[1], SKILL_VERSION, 'README version badge drifted from SKILL_VERSION');
+    assert.equal(current[1], SKILL_VERSION, 'README "current release" drifted from SKILL_VERSION');
+});
+
 test('SKILL.md runs the check at item 0, before the baseline', () => {
     const skill = fs.readFileSync(path.join(SKILL_DIR, 'SKILL.md'), 'utf8');
     const check = skill.indexOf('scripts/check-update.js');

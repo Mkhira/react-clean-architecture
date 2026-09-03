@@ -180,7 +180,8 @@ $begin
 
 When the user asks to create/scaffold a feature, add an endpoint to a feature,
 or build Figma screens for a feature, READ AND FOLLOW \`${rel}/SKILL.md\`
-step by step (it links DESIGN.md, SPEC_FORMAT.md and AUDIT.md as needed).
+step by step (it links INTAKE.md, APPEND.md, LIFECYCLE.md, REVIEW.md, FORMS.md,
+COMPONENTS.md, DESIGN.md, SPEC_FORMAT.md and AUDIT.md as needed).
 Run its Node scripts from the repository root exactly as SKILL.md instructs —
 do not re-implement what the scripts already do.
 $end
@@ -228,8 +229,10 @@ alwaysApply: false
 READ AND FOLLOW \`.cursor/skills/$SKILL_NAME/SKILL.md\` step by step.
 It is the single source of truth for the workflow (intake → spec → generate →
 register → audit → design lane). Run its Node scripts from the repo root as
-instructed — never re-implement what the scripts do. In flat-text UIs, ask the
-intake questions as plain numbered questions, ONE per message.
+instructed — never re-implement what the scripts do. Read INTAKE.md when it
+routes you there; the design lane, forms and review conventions live in
+DESIGN.md / FORMS.md / REVIEW.md. In flat-text UIs, ask the intake questions
+as plain numbered questions, ONE per message.
 EOF
     echo "updated → $PROJECT/.cursor/rules/$SKILL_NAME.mdc"
     echo "done. Cursor picks the rule up on the next Agent request."
