@@ -1972,7 +1972,7 @@ if (require.main === module) {
     process.exitCode = main();
 }
 
-const SKILL_VERSION = '1.20.1';
+const SKILL_VERSION = '1.20.2';
 
 /**
  * On-disk directory for a feature name, RELATIVE to src/features (may contain a

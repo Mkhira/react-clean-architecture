@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.20.2 — compaction hooks move to the plugin's hooks/hooks.json
+
+Verified with headless sessions that send `/compact`: Claude Code 2.1.259 does not dispatch
+PreCompact/PostCompact to skill-frontmatter hooks at all — the same skill's Stop hook fires
+in later turns, the compaction pair never did, and a manual compaction went through with a
+manifest present and no spec on disk. The pair now lives in the plugin's `hooks/hooks.json`
+(`${CLAUDE_PLUGIN_ROOT}`-addressed, manual compactions only) and fires for every plugin
+install; the skill frontmatter keeps the three tool/stop hooks. Symlink and copy installs get
+the compaction pair from a settings snippet in the README. SKILL.md's compaction section says
+where the backstop lives. Test count unchanged (one wiring assertion replaced by a hooks.json
+test).
+
 ## 1.20.1 — hooks actually run: self-locating hook commands
 
 Verified in a fresh session against the installed plugin (Claude Code 2.1.259): the

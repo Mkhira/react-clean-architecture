@@ -18,6 +18,8 @@ allowed-tools: Bash(node *), Bash(npx tsc *), Bash(npx jest *), Bash(npx expo *)
 # Hook commands locate the skill themselves: Claude Code expands ${CLAUDE_PLUGIN_ROOT}
 # for plugin installs but sets NO variable for a symlinked/copied skill, and
 # ${CLAUDE_SKILL_DIR} is not expanded inside hook commands (verified 2.1.259).
+# PreCompact/PostCompact are NOT dispatched to skill hooks — they live in the
+# plugin's hooks/hooks.json (symlink/copy installs: README "Hooks" settings snippet).
 hooks:
   PreToolUse:
     - matcher: "Bash"
@@ -29,15 +31,6 @@ hooks:
       hooks:
         - type: command
           command: 'for d in "${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/skills/react-clean-architecture}" "$CLAUDE_PROJECT_DIR/.claude/skills/react-clean-architecture" "$HOME/.claude/skills/react-clean-architecture"; do [ -f "$d/scripts/hooks/format-feature-file.js" ] && exec node "$d/scripts/hooks/format-feature-file.js"; done; exit 0'
-  PreCompact:
-    - matcher: "manual"
-      hooks:
-        - type: command
-          command: 'for d in "${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/skills/react-clean-architecture}" "$CLAUDE_PROJECT_DIR/.claude/skills/react-clean-architecture" "$HOME/.claude/skills/react-clean-architecture"; do [ -f "$d/scripts/hooks/pre-compact.js" ] && exec node "$d/scripts/hooks/pre-compact.js"; done; exit 0'
-  PostCompact:
-    - hooks:
-        - type: command
-          command: 'for d in "${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/skills/react-clean-architecture}" "$CLAUDE_PROJECT_DIR/.claude/skills/react-clean-architecture" "$HOME/.claude/skills/react-clean-architecture"; do [ -f "$d/scripts/hooks/post-compact.js" ] && exec node "$d/scripts/hooks/post-compact.js"; done; exit 0'
   Stop:
     - hooks:
         - type: command
@@ -201,11 +194,13 @@ Before every pause, make sure everything needed to resume is ON DISK — the spe
 design record, `.claude-skill-manifest.json`, and your todo-tool checklist state. After
 the user returns, re-read those files as needed; never rely on pre-compaction chat detail.
 
-In Claude Code two skill-scoped hooks back this up (`scripts/hooks/`): `pre-compact.js`
-refuses a manual `/compact` while a run is in progress (manifest present) and no spec is on
-disk; `post-compact.js` re-injects the spec/manifest paths and the screen progress after the
-compaction. They are a backstop, not a substitute — still name the paths in the pause message,
-other hosts have no hooks.
+In Claude Code two hooks back this up (`scripts/hooks/`): `pre-compact.js` refuses a manual
+`/compact` while a run is in progress (manifest present) and no spec is on disk;
+`post-compact.js` re-injects the spec/manifest paths and the screen progress after the
+compaction. They are wired at plugin level (`hooks/hooks.json` — Claude Code does not send
+compaction events to skill-scoped hooks), so a symlink/copy install needs the README's
+settings snippet. They are a backstop, not a substitute — still name the paths in the pause
+message, other hosts have no hooks.
 
 ## Step 0z — Arguments already given
 

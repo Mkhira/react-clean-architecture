@@ -289,11 +289,13 @@ test('SKILL.md wires all five hooks and every command points at an existing scri
     const skill = fs.readFileSync(path.join(SKILL_DIR, 'SKILL.md'), 'utf8');
     const frontmatter = skill.split('\n---\n')[0];
     assert.match(frontmatter, /^hooks:\n/m);
-    for (const event of ['PreToolUse', 'PostToolUse', 'PreCompact', 'PostCompact', 'Stop']) {
+    for (const event of ['PreToolUse', 'PostToolUse', 'Stop']) {
         assert.match(frontmatter, new RegExp(`^  ${event}:\\n`, 'm'), `${event} not wired`);
     }
+    // compaction events are not dispatched to skill hooks (2.1.259) — they live in hooks/hooks.json
+    assert.doesNotMatch(frontmatter, /^  (PreCompact|PostCompact):/m);
     const commands = [...frontmatter.matchAll(/command: '(for d in [^\n]*?exit 0)'/g)].map((m) => m[1]);
-    assert.equal(commands.length, 5, 'five self-locating hook commands');
+    assert.equal(commands.length, 3, 'three self-locating hook commands');
     for (const command of commands) {
         const rel = command.match(/exec node "\$d\/(scripts\/hooks\/[a-z-]+\.js)"/)[1];
         assert.ok(fs.existsSync(path.join(SKILL_DIR, rel)), `${rel} missing`);
@@ -304,7 +306,22 @@ test('SKILL.md wires all five hooks and every command points at an existing scri
         assert.match(command, /\$CLAUDE_PROJECT_DIR\/\.claude\/skills\/react-clean-architecture/);
         assert.match(command, /\$HOME\/\.claude\/skills\/react-clean-architecture/);
     }
-    assert.match(frontmatter, /PreCompact:\n    - matcher: "manual"/, 'only manual compactions may be refused');
+});
+
+test('the plugin hooks.json carries the compaction pair, manual-only, pointing at existing scripts', () => {
+    const file = path.join(SKILL_DIR, '..', '..', 'hooks', 'hooks.json');
+    const json = JSON.parse(fs.readFileSync(file, 'utf8'));
+    assert.deepEqual(Object.keys(json.hooks).sort(), ['PostCompact', 'PreCompact']);
+    assert.equal(json.hooks.PreCompact[0].matcher, 'manual', 'only manual compactions may be refused');
+    for (const event of ['PreCompact', 'PostCompact']) {
+        for (const group of json.hooks[event]) {
+            for (const hook of group.hooks) {
+                assert.equal(hook.type, 'command');
+                const rel = hook.command.match(/\$\{CLAUDE_PLUGIN_ROOT\}\/(skills\/react-clean-architecture\/scripts\/hooks\/[a-z-]+\.js)/)[1];
+                assert.ok(fs.existsSync(path.join(SKILL_DIR, '..', '..', rel)), `${rel} missing`);
+            }
+        }
+    }
 });
 
 test('the frontmatter hook command finds the skill for a plugin install, a user symlink, and neither', () => {
