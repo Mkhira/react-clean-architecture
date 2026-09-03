@@ -19,8 +19,11 @@ const {
     latestTag,
     installKind,
     updateSteps,
+    defaultCachePath,
     SKILL_VERSION,
     CACHE_TTL_MS,
+    PLUGIN_NAME,
+    MARKETPLACE_NAME,
 } = require('../scripts/check-update.js');
 const { spawnSync } = require('child_process');
 const { runScript, makeTmpDir, write } = require('./helpers.js');
@@ -91,7 +94,7 @@ test('installKind names the install from the paths alone', () => {
     const linked = path.join('/Users/x/.claude/skills/react-clean-architecture/scripts/check-update.js');
     assert.equal(installKind(linked, real), 'symlink');
     // plugin cache path wins regardless of what the real files sit next to
-    const plugin = '/Users/x/.claude/plugins/cache/react-clean-architecture/skills/rca/scripts/check-update.js';
+    const plugin = '/Users/x/.claude/plugins/cache/react-clean-plugin/skills/react-clean-architecture/scripts/check-update.js';
     assert.equal(installKind(plugin, real), 'plugin');
 
     // copied files: no .git anywhere above them
@@ -102,7 +105,7 @@ test('installKind names the install from the paths alone', () => {
 
 test('each install kind gets a command that actually applies to it', () => {
     const real = path.join('/tmp/clone', 'skills', 'rca', 'scripts', 'check-update.js');
-    assert.match(updateSteps('plugin', real).steps.join('\n'), /\/plugin marketplace update .*\n.*\/plugin update/);
+    assert.match(updateSteps('plugin', real).steps.join('\n'), /\/plugin marketplace update react-clean-architecture\n.*\/plugin update react-clean-plugin/);
     assert.match(updateSteps('symlink', real).steps[0], /^git -C \/tmp\/clone pull$/);
     assert.match(updateSteps('clone', real).steps[0], /^git -C \/tmp\/clone pull$/);
     assert.match(updateSteps('copy', real).steps.join('\n'), /npx skills@latest add/);
@@ -216,6 +219,25 @@ test('README badge and "current release" line carry the same version', () => {
     assert.ok(current, 'README "current release" line missing');
     assert.equal(badge[1], SKILL_VERSION, 'README version badge drifted from SKILL_VERSION');
     assert.equal(current[1], SKILL_VERSION, 'README "current release" drifted from SKILL_VERSION');
+});
+
+test('plugin.json / marketplace.json carry the names check-update.js prints', () => {
+    /*
+     * The plugin is `react-clean-plugin` inside the `react-clean-architecture`
+     * marketplace, so the install is /react-clean-plugin:react-clean-architecture
+     * (no doubled namespace). The update commands must name each correctly.
+     */
+    const plugin = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, '.claude-plugin', 'plugin.json'), 'utf8'));
+    const marketplace = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, '.claude-plugin', 'marketplace.json'), 'utf8'));
+    assert.equal(plugin.name, PLUGIN_NAME);
+    assert.equal(marketplace.plugins[0].name, PLUGIN_NAME);
+    assert.equal(marketplace.name, MARKETPLACE_NAME);
+    assert.notEqual(PLUGIN_NAME, 'react-clean-architecture', 'plugin name = skill name would double the namespace again');
+});
+
+test('the update cache lives in CLAUDE_PLUGIN_DATA for plugin installs, ~/.cache otherwise', () => {
+    assert.equal(defaultCachePath({ CLAUDE_PLUGIN_DATA: '/Users/x/.claude/plugins/data/react-clean-plugin' }), '/Users/x/.claude/plugins/data/react-clean-plugin/update-check.json');
+    assert.match(defaultCachePath({}), /\.cache\/react-clean-architecture\/update-check\.json$/);
 });
 
 test('SKILL.md runs the check at item 0, before the baseline', () => {

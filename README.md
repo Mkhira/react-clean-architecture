@@ -2,7 +2,7 @@
 
 > An [Agent Skill](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview) that scaffolds **complete clean-architecture features** in a React Native (Expo) app from a single curl paste — and builds their **pixel-accurate screens from Figma**, verified live on the iOS simulator.
 
-![version](https://img.shields.io/badge/version-1.18.2-blue) ![tests](https://img.shields.io/badge/tests-215%20passing-brightgreen) ![deps](https://img.shields.io/badge/dependencies-zero-lightgrey) ![node](https://img.shields.io/badge/node-%E2%89%A518-339933) ![license](https://img.shields.io/badge/license-MIT-yellow)
+![version](https://img.shields.io/badge/version-1.19.0-blue) ![tests](https://img.shields.io/badge/tests-217%20passing-brightgreen) ![deps](https://img.shields.io/badge/dependencies-zero-lightgrey) ![node](https://img.shields.io/badge/node-%E2%89%A518-339933) ![license](https://img.shields.io/badge/license-MIT-yellow)
 
 Works with **Claude Code**, **Cursor**, **OpenAI Codex CLI**, and any agent that reads `AGENTS.md` / Markdown skills. One [install script](#install), three tools.
 
@@ -134,14 +134,13 @@ Run these as **two separate commands**, not one line — the second is not part 
 ```
 
 ```
-/plugin install react-clean-architecture@react-clean-architecture
+/plugin install react-clean-plugin@react-clean-architecture
 ```
 
-> **This is the one path that does not give you a plain `/react-clean-architecture`.** Claude
-> Code namespaces plugin-provided skills as `<plugin>:<skill>`, so it appears as
-> `/react-clean-architecture:react-clean-architecture` — same files, same behavior, longer
-> name. Prefer the [skill install](#universal-any-agent-user-wide--recommended) above unless
-> you specifically want `/plugin update` to manage it.
+> Plugin skills are namespaced `<plugin>:<skill>`, so this install is
+> `/react-clean-plugin:react-clean-architecture` (the plugin is `react-clean-plugin`, the
+> skill inside it keeps its name). Same files, same behavior as the skill install above; pick
+> this one when you want `/plugin update` to manage it.
 
 > Skill files only — follow up with the [touch-tools step](#simulator-touch-tools-idb).
 
@@ -195,13 +194,13 @@ cp -R skills/react-clean-architecture ~/.claude/skills/
 
 ### Update
 
-The current release is **1.18.2** ([CHANGELOG](CHANGELOG.md)). **The skill tells you itself**: every run starts with `scripts/check-update.js`, which compares your installed version against the newest release tag and, when you are behind, prints the versions and the update command for your install before the first question. It never blocks the run, never updates anything on its own, and has no "dismiss" — it says it again on every run until you update. Offline, or without `git`, the check is skipped silently.
+The current release is **1.19.0** ([CHANGELOG](CHANGELOG.md)). **The skill tells you itself**: every run starts with `scripts/check-update.js`, which compares your installed version against the newest release tag and, when you are behind, prints the versions and the update command for your install before the first question. It never blocks the run, never updates anything on its own, and has no "dismiss" — it says it again on every run until you update. Offline, or without `git`, the check is skipped silently.
 
 How you update depends on how you installed:
 
 | Installed with | Update with |
 |---|---|
-| **Claude Code plugin** | `/plugin marketplace update react-clean-architecture` **then** `/plugin update react-clean-architecture` — the marketplace refresh comes first; it re-reads `marketplace.json` from GitHub, which is what carries the new version |
+| **Claude Code plugin** | `/plugin marketplace update react-clean-architecture` **then** `/plugin update react-clean-plugin` — the marketplace refresh comes first; it re-reads `marketplace.json` from GitHub, which is what carries the new version |
 | **`npx skills`** | re-run `npx skills@latest add Mkhira/react-clean-architecture` — same command as install, it overwrites in place |
 | **`install.sh`, symlinked** (the default for the Claude target) | nothing to do — `git pull` in your clone and the installed skill is already the new version |
 | **`install.sh --copy`, or the Cursor / Codex targets** (always copy) | `git pull`, then re-run the same `./install.sh <target>` you used originally |
@@ -296,7 +295,7 @@ Paths are relative to [`skills/react-clean-architecture/`](skills/react-clean-ar
 
 ## Testing the skill itself
 
-215 tests on Node's built-in runner — still zero dependencies:
+217 tests on Node's built-in runner — still zero dependencies:
 
 ```bash
 node --test skills/react-clean-architecture/tests/*.test.js

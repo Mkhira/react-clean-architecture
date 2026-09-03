@@ -278,3 +278,38 @@ so drift would advertise an update the user already had, or hide one they needed
 `SKILL_VERSION` = `plugin.json` = `marketplace.json`.
 
 Suite: 172 → 189 tests, none touching the network (CLI cases run through `--cache`).
+
+## 2026-09-03 — 1.19.0: alignment with the Claude Code skills/hooks/plugins guides
+
+Review of the skill against the Claude Code skills, hooks, subagents, advanced-features,
+workflows and plugins guides (plan: repo-root `IMPLEMENTATION_PLAN.md`). What was adopted
+and why; what was not is in that plan's "Not planned" table and stays rejected.
+
+**Frontmatter.** `argument-hint`, `effort: high`, `allowed-tools` (the skill's own scripts,
+tsc/jest/expo, simctl/idb, read-only git — `curl` deliberately excluded so a mutating intake
+curl still prompts outside auto mode). Not `disable-model-invocation` (auto-trigger from plain
+requests is the README's stated goal), not `context: fork` (the intake is interactive).
+
+**`$ARGUMENTS` pre-fill (Step 0z).** Arguments answer only the questions they cover; every
+other question is still asked one per message. This is not a grouped intake — the ordering
+rule in INTAKE.md is unchanged.
+
+**Hooks are a backstop, not the rule.** PreCompact/PostCompact mirror the compaction
+checkpoints (spec on disk before the pause; paths re-injected after); the self-update guard
+enforces "never update the skill yourself"; prettier runs on feature files. All command hooks,
+all inert outside a run (manifest present), all silent on other hosts.
+
+**The Stop gate is a command hook, never a prompt hook.** A model-evaluated Stop hook is
+non-deterministic and would fight the three mandatory compaction pauses and the dozens of
+questions a run asks. The command hook only judges a stop that is neither a known pause
+marker nor a question in the closing lines, and only blocks for AUDIT.md/DESIGN.md §7's
+definition of done (working files after the implementation is finished, `TODO(claude)`,
+COMPONENTS.md drift). It honours `stop_hook_active`, so it can never loop.
+
+**Plugin renamed `react-clean-plugin`.** Plugin skills are `<plugin>:<skill>`; a plugin named
+after its only skill produced `/react-clean-architecture:react-clean-architecture`. The
+marketplace keeps the repo name so an already-added marketplace survives the rename;
+`check-update.js` now carries the three names separately. `claude plugin tag` would create
+`react-clean-plugin--v1.19.0`, which `latestTag` does not parse, so releases keep `git tag
+vX.Y.Z`. No `.lsp.json`: `typescript-language-server` is not on the maintainer's PATH and
+there is no official TypeScript LSP plugin to point at; revisit after a design-lane run.

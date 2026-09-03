@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.19.0 (unreleased) — frontmatter fields, argument pre-fill, inlined pre-checks
+## 1.19.0 — frontmatter fields, argument pre-fill, inlined pre-checks, skill-scoped hooks, plugin renamed
 
 Claude Code reads three more frontmatter fields: `argument-hint` (shown in the `/` menu),
 `effort: high` (pins the design lane's reasoning depth for users without a global
@@ -27,6 +27,18 @@ every `.ts`/`.tsx` written under `src/features/` or `app/service-flow/`. To make
 compaction pair work, `generate.js` now records the spec path in the manifest (`spec`) and
 `audit.js --persist-spec` repoints it at the persisted copy. 24 new tests (191 → 215), all
 driven through stdin JSON like Claude Code does.
+
+The plugin is renamed `react-clean-plugin` (was `react-clean-architecture`, the same as the
+skill it contains, which made the plugin install appear as the doubled
+`/react-clean-architecture:react-clean-architecture`). Plugin skills are namespaced
+`<plugin>:<skill>`, so the install is now `/react-clean-plugin:react-clean-architecture`:
+`/plugin install react-clean-plugin@react-clean-architecture`. The marketplace keeps the repo's
+name, so an already-added marketplace needs no change — `/plugin marketplace update
+react-clean-architecture` then `/plugin update react-clean-plugin`. Anyone on the old plugin
+name uninstalls `react-clean-architecture@react-clean-architecture` and installs the new one
+once. `check-update.js` prints the right name for each step and, under a plugin install, keeps
+its cache in `CLAUDE_PLUGIN_DATA` instead of `~/.cache`. Skill installs (install.sh, npx
+skills, manual copy) are unaffected: still `/react-clean-architecture`.
 
 ## 1.18.2 — README/install.sh doc drift + README version guard
 

@@ -32,7 +32,16 @@ const { SKILL_VERSION } = require('./generate.js');
 const REPO = 'https://github.com/Mkhira/react-clean-architecture';
 const CHANGELOG = `${REPO}/blob/main/CHANGELOG.md`;
 const UPDATE_DOCS = `${REPO}#update`;
-const PLUGIN_NAME = 'react-clean-architecture';
+/**
+ * Three names, deliberately distinct:
+ *   SKILL_NAME       the skill directory + the GitHub repo (npx skills, cache dir)
+ *   PLUGIN_NAME      the Claude Code plugin — appears as /<plugin>:<skill>
+ *   MARKETPLACE_NAME the marketplace users `add`ed (kept = the repo name, so an
+ *                    already-added marketplace keeps working across the rename)
+ */
+const SKILL_NAME = 'react-clean-architecture';
+const PLUGIN_NAME = 'react-clean-plugin';
+const MARKETPLACE_NAME = 'react-clean-architecture';
 /** How long a GitHub answer is reused. The NOTICE still prints every run. */
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 
@@ -114,7 +123,7 @@ function updateSteps(kind, real) {
             return {
                 label: 'Claude Code plugin',
                 steps: [
-                    `/plugin marketplace update ${PLUGIN_NAME}`,
+                    `/plugin marketplace update ${MARKETPLACE_NAME}`,
                     `/plugin update ${PLUGIN_NAME}`,
                     '(the marketplace refresh must come first — it is what carries the new version;',
                     ' restart Claude Code afterwards so the new files load)',
@@ -134,7 +143,7 @@ function updateSteps(kind, real) {
             return {
                 label: 'copied files (npx skills, install.sh --copy, Cursor/Codex, or a manual copy)',
                 steps: [
-                    `npx skills@latest add Mkhira/${PLUGIN_NAME}`,
+                    `npx skills@latest add Mkhira/${SKILL_NAME}`,
                     `— or: git pull in your clone, then re-run ./install.sh <target> exactly as you did originally`,
                 ],
             };
@@ -143,8 +152,10 @@ function updateSteps(kind, real) {
 
 // ------------------------------------------------------------- the check ----
 
-function defaultCachePath() {
-    return path.join(os.homedir(), '.cache', PLUGIN_NAME, 'update-check.json');
+/** Plugin installs get Claude Code's per-plugin data dir; everything else ~/.cache. */
+function defaultCachePath(env = process.env) {
+    if (env.CLAUDE_PLUGIN_DATA) return path.join(env.CLAUDE_PLUGIN_DATA, 'update-check.json');
+    return path.join(os.homedir(), '.cache', SKILL_NAME, 'update-check.json');
 }
 
 function readCache(file, now) {
@@ -248,4 +259,4 @@ if (require.main === module) {
     process.exitCode = main(process.argv.slice(2));
 }
 
-module.exports = { parseVersion, compareVersions, latestTag, installKind, updateSteps, skillDirOf, cloneRootOf, main, SKILL_VERSION, CACHE_TTL_MS };
+module.exports = { parseVersion, compareVersions, latestTag, installKind, updateSteps, skillDirOf, cloneRootOf, defaultCachePath, main, SKILL_VERSION, CACHE_TTL_MS, SKILL_NAME, PLUGIN_NAME, MARKETPLACE_NAME };
