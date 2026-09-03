@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.19.0 (unreleased) — frontmatter fields, argument pre-fill, inlined pre-checks
+
+Claude Code reads three more frontmatter fields: `argument-hint` (shown in the `/` menu),
+`effort: high` (pins the design lane's reasoning depth for users without a global
+`effortLevel`) and `allowed-tools` (the skill's own scripts, tsc/jest/expo, simctl/idb and
+read-only git no longer prompt outside auto mode; `curl` is deliberately not listed so a
+mutating intake curl still asks). A new Step 0z reads `$ARGUMENTS`: a feature name, mode
+word, "mock" or a pasted curl/Figma link given with the invocation skips only the questions
+it answers — every other question is still asked, one per message. The update check and
+Step 1's dirty-tree check are pre-run by Claude Code at invocation (`!` dynamic context)
+and their output is inlined into SKILL.md; other hosts see the command and run it as
+before. `<skill>` is documented as `${CLAUDE_SKILL_DIR}`. No script changes.
+
 ## 1.18.2 — README/install.sh doc drift + README version guard
 
 1.18.1 shipped with the README badge and "current release" line still saying 1.18.0. The

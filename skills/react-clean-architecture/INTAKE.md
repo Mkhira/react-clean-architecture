@@ -11,6 +11,8 @@ change based on Step 1's outcome (new feature, append, empty skeleton, dirty tre
 that alters the intake order; report Step 1 results in one short line, not an analysis dump).
 Never bundle two questions into one message, and never invite combined answers like "paste
 the curl along with your choice". Ask, stop, wait for the answer, then ask the next.
+A curl or "mock" captured from the invocation arguments (SKILL.md Step 0z) counts as the
+answer to sequence step 2 / the mock lane; the ordering of everything else is unchanged.
 
 The fixed sequence:
 

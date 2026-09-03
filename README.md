@@ -225,6 +225,11 @@ or for screens only:
 
 > `/react-clean-architecture` I need to append on src/features/tax-stamp-validation — design mode only
 
+or, in Claude Code, answer the first questions up front as arguments (the skill pre-fills
+what they cover and still asks everything else, one question per message):
+
+> `/react-clean-architecture ApplicationStatus design only`
+
 The agent walks the checklist in [SKILL.md](skills/react-clean-architecture/SKILL.md): [update check](#update) → intake → test-infra check (auto-installs `@testing-library/react-native` on first run) → confirmation tables → generate → register → audit → (design lane) → final report. At three points — after the intake confirmation, after each per-screen checkpoint, and after the audit passes — it pauses and asks you to run your host's compaction command (`/compact`, `/summarize`, …); everything needed to resume is on disk before the pause, so a long run never depends on chat history. Appending an endpoint or a screen to a feature the skill built earlier is automatic — the persisted spec provides full prior context, no re-asking. The mock-backend lane generates a `MockService` behind the real service interface; swapping to the live API later is a one-line DI change (the swap comment is generated with it).
 
 ---

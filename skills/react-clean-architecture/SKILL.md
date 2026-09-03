@@ -12,6 +12,9 @@ description: >-
   endpoint/API, implement Figma screens or a form screen for a feature, or generate a
   repository, service, or use case from a curl/endpoint. Supports append mode for endpoints
   and screens.
+argument-hint: "[feature name] [curl paste | figma link | 'design only' | 'mock']"
+effort: high
+allowed-tools: Bash(node *), Bash(npx tsc *), Bash(npx jest *), Bash(npx expo *), Bash(xcrun simctl *), Bash(idb *), Bash(git status *), Bash(git describe *), Bash(command -v *), Read, Edit, Write, Glob, Grep
 ---
 
 # react-clean-architecture
@@ -24,6 +27,8 @@ Node scripts generate every file, patch DI/i18n/query-keys/config/env, and audit
 hand-built by Claude following [DESIGN.md](DESIGN.md).
 
 **Run every script from the TARGET REPO ROOT.** `<skill>` below means this skill's directory.
+In Claude Code that is `${CLAUDE_SKILL_DIR}` (substituted before you read this; other hosts
+see the literal text and resolve the directory themselves).
 
 - Spec schema: [SPEC_FORMAT.md](SPEC_FORMAT.md) · Audit details: [AUDIT.md](AUDIT.md)
 - Endpoint intake, question by question (Step 2): [INTAKE.md](INTAKE.md) — backend/full only
@@ -54,7 +59,9 @@ you're on. Every step still runs; only the narration is trimmed.
 
 ```
 - [ ] 0. Update check: node <skill>/scripts/check-update.js — UPDATE AVAILABLE → tell the
-        user before your first question, then continue the run ("Update check" section below)
+        user before your first question, then continue the run ("Update check" section below).
+        Claude Code pre-runs it at invocation: if that section already shows a result line,
+        do not re-run
 - [ ] 0a. Baseline: node <skill>/scripts/audit.js --baseline
 - [ ] 0b. Test infra: node <skill>/scripts/setup-test-infra.js (auto-installs
         @testing-library/react-native + jest.setup.js wiring; failure → logic tests + report)
@@ -65,6 +72,8 @@ you're on. Every step still runs; only the narration is trimmed.
 - [ ] 0d. Any screen with inputs? → read FORMS.md; the form-first gate runs BEFORE the
         component reuse gate on every such screen. Exhaustive builder props by section:
         node <skill>/scripts/formref.js (index) → formref.js "Text input" Dropdown ...
+- [ ] 0z. Arguments given? → pre-fill Step 1 / 1b / mock from $ARGUMENTS (never skip an
+        unanswered question)
 - [ ] 1. Feature name → new feature or append?  Git tree clean?
 - [ ] 1b. Mode: full (backend + design) / backend only / design only
 - [ ] 2. (backend, full) READ INTAKE.md, then follow it: single or multiple? → curls
@@ -98,6 +107,10 @@ you're on. Every step still runs; only the narration is trimmed.
 ```
 node <skill>/scripts/check-update.js
 ```
+
+Claude Code already ran it at invocation — its result is the next line. If that line still
+shows a command instead of a result, you are on another host: run the command yourself.
+!`node "${CLAUDE_SKILL_DIR}/scripts/check-update.js" 2>/dev/null`
 
 One line back, and the first word says everything: **UP TO DATE** (say nothing, go to 0a) ·
 **UPDATE CHECK SKIPPED** (offline or no git — say nothing, go to 0a) · **UPDATE AVAILABLE**.
@@ -158,6 +171,17 @@ Before every pause, make sure everything needed to resume is ON DISK — the spe
 design record, `.claude-skill-manifest.json`, and your todo-tool checklist state. After
 the user returns, re-read those files as needed; never rely on pre-compaction chat detail.
 
+## Step 0z — Arguments already given
+
+Invocation arguments: `$ARGUMENTS`
+
+If that line is non-empty, extract what it already answers BEFORE asking: a feature name
+(Step 1), a mode word ("design only" / "backend only" / "full", Step 1b), "mock" / "API not
+ready" (INTAKE.md mock lane), and a pasted curl or figma.com link (Step 2 / Step 2c). Skip
+ONLY the questions those answer, in one short confirmation line ("Feature ApplicationStatus,
+design only — from your arguments"). Every question the arguments do not answer is still
+asked, one per message, in the fixed order. Empty → ask everything as before.
+
 ## Step 1 — Feature name
 
 1. Normalize to PascalCase for IDENTIFIERS (classes, tokens, types) — but the on-disk
@@ -171,7 +195,10 @@ the user returns, re-read those files as needed; never rely on pre-compaction ch
    category dirs (e.g. `verificationFeatures/TaxStampValidation`).
    - Exists → **append mode** (read [APPEND.md](APPEND.md) now). New → full scaffold.
 3. `git status --porcelain`: dirty tree → warn that manifest-based rollback is only reliable on
-   a clean tree, offer "continue anyway". Not a hard refusal.
+   a clean tree, offer "continue anyway". Not a hard refusal. Claude Code ran it at
+   invocation — the output (first 20 lines, empty = clean) is on the next line; if it still
+   shows the command, run it yourself:
+   !`git status --porcelain 2>/dev/null | head -20`
 4. Run the tsc baseline NOW (before any generation): `node <skill>/scripts/audit.js --baseline`.
 5. Ensure render-test infra (AUTOMATIC — never ask):
    `node <skill>/scripts/setup-test-infra.js` — installs `@testing-library/react-native` as a
@@ -185,7 +212,7 @@ the user returns, re-read those files as needed; never rely on pre-compaction ch
 
 ## Step 1b — Mode
 
-Ask ONLY (one question, wait for the answer):
+Unless 0z already answered it, ask ONLY (one question, wait for the answer):
 
 > **What are we building?** 1. Full feature (backend + design) · 2. Backend only · 3. Design only
 
