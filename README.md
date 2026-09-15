@@ -323,7 +323,7 @@ Unit suites cover the parsers, generation scenarios (create/append/never-overwri
 
 ## Requirements
 
-- A repo following the zatcaReact conventions: tsyringe `TOKENS`/`TokenRegistry`, `Result<T, E>`, the `AppError` code union in `src/shared/types/errors.ts`, `IHttpClient`, `@core/logging/ILogger`, `@domain/shared/IUseCase`, i18next `featureTranslations`, `@core`/`@features`/`@shared`/`@domain` path aliases, jest-expo.
+- A repo following the host app's conventions: tsyringe `TOKENS`/`TokenRegistry`, `Result<T, E>`, the `AppError` code union in `src/shared/types/errors.ts`, `IHttpClient`, `@core/logging/ILogger`, `@domain/shared/IUseCase`, i18next `featureTranslations`, `@core`/`@features`/`@shared`/`@domain` path aliases, jest-expo.
 - Node ≥ 18. The design lane additionally needs the Figma MCP server and a booted iOS simulator.
 - `install.sh` also auto-installs **idb** for tap-driven simulator verification (Homebrew tap
   `facebook/fb`, or the prebuilt GitHub-release companion when Homebrew is absent — Homebrew
